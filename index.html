@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#2563eb">
+<title>EduGo</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#172033}
+header{background:#2563eb;color:#fff;padding:18px 18px 22px;border-radius:0 0 25px 25px}
+header h1{margin:0;font-size:30px}header p{margin:5px 0 0}
+main{max-width:760px;margin:auto;padding:16px}.card{background:#fff;border-radius:18px;padding:17px;margin:13px 0;box-shadow:0 3px 15px #00000012}
+input,select,textarea,button{width:100%;padding:13px;margin:6px 0;border-radius:12px;border:1px solid #ccd5e3;font-size:15px}
+button{background:#2563eb;color:#fff;border:0;font-weight:700}.secondary{background:#e9eef7;color:#172033}.danger{background:#dc3545}
+.hide{display:none}.roles{display:grid;grid-template-columns:1fr 1fr;gap:9px}.role{padding:13px;background:#edf4ff;border-radius:12px;text-align:center;font-weight:700}
+.avatar{width:58px;height:58px;border-radius:50%;background:#2563eb;color:#fff;display:grid;place-items:center;font-size:30px;font-weight:bold}
+.small{font-size:13px;color:#68758a}.chat{min-height:180px;max-height:330px;overflow:auto;background:#f7f9fc;border-radius:14px;padding:10px}
+.bubble{padding:10px 12px;border-radius:14px;margin:7px 0;max-width:88%}.ai{background:#e7f0ff}.me{background:#2563eb;color:#fff;margin-left:auto}
+</style>
+</head>
+<body>
+<header><h1>EduGo</h1><p>Tu espacio educativo inteligente</p></header>
+<main>
+
+<section id="auth" class="card">
+<h2>🔐 Acceder a EduGo</h2>
+<p class="small">Crea tu cuenta o inicia sesión con el correo registrado.</p>
+<input id="name" placeholder="Nombre completo">
+<input id="email" type="email" placeholder="Correo electrónico">
+<input id="pass" type="password" placeholder="Contraseña">
+<select id="role">
+<option>Estudiante</option><option>Docente</option><option>Coordinador</option>
+<option>Directivo</option><option>Administrador</option><option>Acudiente</option>
+</select>
+<button onclick="register()">Crear cuenta</button>
+<button class="secondary" onclick="login()">Iniciar sesión</button>
+<p id="authMsg" class="small"></p>
+</section>
+
+<section id="ai" class="card">
+<h2>🤖 EduGo IA</h2>
+<p class="small">Haz preguntas sobre matemáticas, ciencias, español, historia y otras materias.</p>
+<textarea id="aiQuestion" placeholder="Escribe tu pregunta..."></textarea>
+<button onclick="askEduGoAI()">Preguntar a EduGo IA</button>
+<div id="aiAnswer" class="bubble ai"></div>
+</section>
+<section id="home" class="hide">
+<div class="card">
+<div style="display:flex;gap:13px;align-items:center">
+<div class="avatar">E</div><div><h2 id="welcome" style="margin:0"></h2><div id="roleInfo" class="small"></div></div>
+</div>
+<button class="danger" onclick="logout()">Cerrar sesión</button>
+</div>
+
+<div class="card"><h2>🤖 EduGo IA</h2>
+<p class="small">Haz una pregunta de matemáticas, ciencias, español, historia, inglés u otra materia.</p>
+<div id="chat" class="chat"><div class="bubble ai"><b>EduGo IA:</b> ¡Hola! Soy tu asistente de estudio. Pregúntame algo y trataré de ayudarte paso a paso.</div></div>
+<textarea id="question" rows="3" placeholder="Ejemplo: ¿Cómo se resuelve una ecuación cuadrática?"></textarea>
+<button onclick="askAI()">Preguntar a EduGo IA</button>
+</div>
+
+<div class="card"><h2>📚 Plataforma</h2><div class="roles">
+<div class="role">📚 Materias</div><div class="role">📝 Tareas</div><div class="role">📅 Calendario</div>
+<div class="role">💬 Foro</div><div class="role">✉️ Mensajes</div><div class="role">👤 Perfil</div>
+</div></div>
+
+<div id="admin" class="card hide"><h2>🛡️ Administración</h2>
+<p class="small">Cuentas creadas y último acceso en este dispositivo.</p><div id="users"></div>
+</div>
+</section>
+</main>
+
+<script>
+const USERS="edugo_users_v2", CURRENT="edugo_current_v2";
+function getUsers(){return JSON.parse(localStorage.getItem(USERS)||"[]")}
+function saveUsers(x){localStorage.setItem(USERS,JSON.stringify(x))}
+function register(){
+ const n=document.getElementById("name").value.trim(),e=document.getElementById("email").value.trim().toLowerCase(),p=document.getElementById("pass").value,r=document.getElementById("role").value;
+ if(!n||!e||!p)return authMsg.textContent="Completa nombre, correo y contraseña.";
+ let a=getUsers(); if(a.some(u=>u.email===e))return authMsg.textContent="Ese correo ya está registrado.";
+ a.push({name:n,email:e,password:p,role:r,lastLogin:null,createdAt:new Date().toISOString()});saveUsers(a);
+ authMsg.textContent="Cuenta creada. Ahora pulsa «Iniciar sesión».";
+}
+function login(){
+ const e=document.getElementById("email").value.trim().toLowerCase(),p=document.getElementById("pass").value;
+ let a=getUsers(),i=a.findIndex(u=>u.email===e&&u.password===p);
+ if(i<0)return authMsg.textContent="Correo o contraseña incorrectos. Primero crea la cuenta en este dispositivo.";
+ a[i].lastLogin=new Date().toISOString();saveUsers(a);localStorage.setItem(CURRENT,e);show(a[i]);
+}
+function show(u){
+ auth.classList.add("hide");home.classList.remove("hide");welcome.textContent="Hola, "+u.name;roleInfo.textContent=u.role+" · "+u.email;
+ if(u.role==="Administrador"){admin.classList.remove("hide");renderUsers()}
+}
+function renderUsers(){users.innerHTML=getUsers().map(u=>"<div class='card'><b>"+esc(u.name)+"</b><br>"+esc(u.email)+"<br><span class='small'>"+esc(u.role)+" · último acceso: "+(u.lastLogin?new Date(u.lastLogin).toLocaleString():"nunca")+"</span></div>").join("")}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function logout(){localStorage.removeItem(CURRENT);location.reload()}
+
+async function askAI(){
+ const q=document.getElementById("question").value.trim();
+ if(!q)return;
+ const chat=document.getElementById("chat");
+ const button=document.querySelector('button[onclick="askAI()"]');
+ chat.innerHTML+="<div class='bubble me'>Tú: "+esc(q)+"</div>";
+ chat.innerHTML+="<div id='typing' class='bubble ai'><b>EduGo IA:</b> Pensando...</div>";
+ chat.scrollTop=chat.scrollHeight;
+ document.getElementById("question").value="";
+ if(button)button.disabled=true;
+ try{
+   const response=await fetch("/api/edugo-ai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:q})});
+   const data=await response.json().catch(()=>({}));
+   const typing=document.getElementById("typing");
+   if(!response.ok) throw new Error(data.error||"No se pudo conectar con la IA.");
+   typing.innerHTML="<b>EduGo IA:</b> "+esc(data.answer||"No recibí una respuesta.");
+ }catch(err){
+   const typing=document.getElementById("typing");
+   if(typing)typing.innerHTML="<b>EduGo IA:</b> ⚠️ "+esc(err.message||"No se pudo conectar con el servidor.");
+ }finally{
+   if(button)button.disabled=false;
+   chat.scrollTop=chat.scrollHeight;
+ }
+}
+window.onload=()=>{let e=localStorage.getItem(CURRENT),u=getUsers().find(x=>x.email===e);if(u)show(u)}
+</script>
+</body></html>
