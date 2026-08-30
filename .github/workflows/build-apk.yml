@@ -37,7 +37,7 @@ jobs:
           else
             echo "ERROR: No se encontró el HTML de EduGo."
             exit 1
-          fi
+                    fi
 
       - name: Instalar Capacitor
         run: |
