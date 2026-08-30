@@ -1,0 +1,81 @@
+name: EduGo IA - Generar APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Construir EduGo.apk
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Descargar proyecto
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Crear carpeta de aplicación
+        run: |
+          mkdir -p www
+
+          if [ -f "EduGo_actualizado-3.html" ]; then
+            cp "EduGo_actualizado-3.html" "www/index.html"
+          elif [ -f "EduGo_actualizado.html" ]; then
+            cp "EduGo_actualizado.html" "www/index.html"
+          elif [ -f "index.html" ]; then
+            cp "index.html" "www/index.html"
+          else
+            echo "ERROR: No se encontró el HTML de EduGo."
+            exit 1
+          fi
+
+      - name: Instalar Capacitor
+        run: |
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Crear configuración Capacitor
+        run: |
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.edugo.app",
+            "appName": "EduGo",
+            "webDir": "www",
+            "server": {
+              "androidScheme": "https"
+            }
+          }
+          EOF
+
+      - name: Crear proyecto Android
+        run: |
+          npx cap add android
+          npx cap copy android
+
+      - name: Compilar APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Preparar EduGo.apk
+        run: |
+          mkdir -p release
+          cp android/app/build/outputs/apk/debug/app-debug.apk release/EduGo.apk
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: EduGo-IA-APK
+          path: release/EduGo.apk
+          retention-days: 30
