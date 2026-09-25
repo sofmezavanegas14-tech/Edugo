@@ -32,6 +32,8 @@ jobs:
           # Legacy copies remain fallback sources for compatibility.
           if [ -f "index.html" ]; then
             cp "index.html" "www/index.html"
+            mkdir -p "www/js"
+            cp -R "js/." "www/js/"
           elif [ -f "EduGo_actualizado-3.html" ]; then
             cp "EduGo_actualizado-3.html" "www/index.html"
           elif [ -f "EduGo_actualizado.html" ]; then
