@@ -143,7 +143,7 @@ const defaultPosts=[
  {id:2,name:"Coordinación Académica",role:"Directivo",text:"Recuerden revisar el calendario: esta semana hay actividades académicas importantes.",privacy:"public",likes:7,comments:[]}
 ];
 let state=JSON.parse(localStorage.getItem("edugoState")||"null")||{
- user:null, posts:defaultPosts, tasks:[
+ user:null, posts:defaultPosts, likedPosts:{}, tasks:[
   {id:1,title:"Taller de matemáticas",subject:"Matemáticas",date:"2026-08-25",done:false},
   {id:2,title:"Lectura de español",subject:"Español",date:"2026-08-27",done:false}
  ],events:[
@@ -200,10 +200,10 @@ function renderPosts(){
  const el=document.getElementById("posts");
  const visible=state.posts.filter(p=>p.privacy==="public"||p.name===state.user.name);
  el.innerHTML=visible.length?visible.map(p=>`<article class="card post"><div class="post-head"><div class="avatar">${esc(p.name[0])}</div><div><div class="post-name">${esc(p.name)} <span class="badge">${esc(p.role)}</span> <span class="badge ${p.privacy}">${p.privacy==="public"?"🌐 Pública":"🔒 Privada"}</span></div><div class="post-meta">Publicación de la comunidad</div></div></div>
- <div class="post-body">${esc(p.text)}</div><div class="actions"><button class="action" onclick="likePost(${p.id})">👍 ${p.likes}</button><button class="action" onclick="toggleComments(${p.id})">💬 ${p.comments.length}</button><button class="action" onclick="sendTo('${jsq(p.name)}')">✉️ Mensaje</button></div>
+ <div class="post-body">${esc(p.text)}</div><div class="actions"><button class="action" onclick="likePost(${p.id})">${(state.likedPosts?.[String(state.user?.name||"").trim().toLowerCase()]||[]).includes(p.id)?"👍 Te gusta":"👍 Me gusta"} · ${p.likes}</button><button class="action" onclick="toggleComments(${p.id})">💬 ${p.comments.length}</button><button class="action" onclick="sendTo('${jsq(p.name)}')">✉️ Mensaje</button></div>
  <div id="comments-${p.id}" class="hidden"><div style="margin-top:10px">${p.comments.map(c=>`<div class="comment"><b>${esc(c.name)}</b><br>${esc(c.text)}</div>`).join("")}</div><div class="row" style="margin-top:10px"><input id="comment-${p.id}" class="input" placeholder="Escribe un comentario"><button class="btn" onclick="commentPost(${p.id})">Comentar</button></div></div></article>`).join(""):`<div class="empty">No hay publicaciones visibles.</div>`;
 }
-function likePost(id){const p=state.posts.find(x=>x.id===id);p.likes++;save();renderPosts()}
+function likePost(id){const userKey=String(state.user?.name||"guest").trim().toLowerCase();if(!userKey)return;if(!state.likedPosts||typeof state.likedPosts!=="object")state.likedPosts={};if(!Array.isArray(state.likedPosts[userKey]))state.likedPosts[userKey]=[];if(state.likedPosts[userKey].includes(id)){alert("Ya diste Me gusta a esta publicación.");return}const p=state.posts.find(x=>x.id===id);if(!p)return;p.likes=Math.max(0,Number(p.likes)||0)+1;state.likedPosts[userKey].push(id);save();renderPosts()}
 function toggleComments(id){document.getElementById("comments-"+id).classList.toggle("hidden")}
 function commentPost(id){const input=document.getElementById("comment-"+id),text=input.value.trim();if(!text)return;state.posts.find(p=>p.id===id).comments.push({name:state.user.name,text});save();renderPosts();document.getElementById("comments-"+id).classList.remove("hidden")}
 function tasksView(){return `<h1 class="page-title">📝 Mis tareas</h1><p class="subtitle">Organiza tus actividades y marca lo que ya terminaste.</p>
