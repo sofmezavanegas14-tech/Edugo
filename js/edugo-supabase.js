@@ -39,7 +39,8 @@
   }
 
   async function ensureProfile(displayName) {
-    const username = (currentUser.email || currentUser.id).split("@")[0].replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 60) || currentUser.id.slice(0, 12);
+    const baseUsername = (currentUser.email || "usuario").split("@")[0].replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 48) || "usuario";
+    const username = baseUsername + "-" + currentUser.id.replace(/-/g, "").slice(0, 8);
     const { error } = await db.from("profiles").upsert({
       id: currentUser.id,
       username,
