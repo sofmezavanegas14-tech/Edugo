@@ -40,8 +40,7 @@
   async function ensureProfile(displayName) {
     const { error } = await db.from("profiles").upsert({
       id: currentUser.id,
-      nombre: displayName,
-      email: currentUser.email || null
+      nombre: displayName
     }, { onConflict: "id" });
     if (error) console.warn("EduGo profile:", error.message);
   }
@@ -102,7 +101,7 @@
     const [{ data: likes, error: le }, { data: comments, error: ce }, { data: profiles, error: pre }] = await Promise.all([
       db.from("post_likes").select("post_id,user_id").in("post_id", ids),
       db.from("comments").select("id,post_id,author_id,content,created_at").in("post_id", ids).order("created_at", { ascending: true }),
-      authorIds.length ? db.from("profiles").select("id,nombre,email").in("id", authorIds) : Promise.resolve({ data: [], error: null })
+      authorIds.length ? db.from("profiles").select("id,nombre,avatar_url").in("id", authorIds) : Promise.resolve({ data: [], error: null })
     ]);
     if (le) throw le;
     if (ce) throw ce;
@@ -126,12 +125,12 @@
 
     return (posts || []).map(p => ({
       ...p,
-      authorName: profileMap.get(p.author_id)?.nombre || profileMap.get(p.author_id)?.email || "Usuario",
+      authorName: profileMap.get(p.author_id)?.nombre || "Usuario",
       likeCount: counts.get(p.id) || 0,
       likedByMe: mine.has(p.id),
       comments: (grouped.get(p.id) || []).map(c => ({
         ...c,
-        authorName: profileMap.get(c.author_id)?.nombre || profileMap.get(c.author_id)?.email || "Usuario"
+        authorName: profileMap.get(c.author_id)?.nombre || "Usuario"
       }))
     }));
   }
