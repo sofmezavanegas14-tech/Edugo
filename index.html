@@ -319,7 +319,7 @@ function renderPosts(){
   el.innerHTML=visible.length?visible.map(p=>`<article class="card post">
   <div class="post-head"><div class="avatar">${esc(p.name[0]||"U")}</div><div><div class="post-name">${esc(p.name)} <span class="badge">${esc(p.role)}</span> <span class="badge ${p.privacy}">${p.privacy==="public"?"🌐 Pública":"🔒 Privada"}</span></div><div class="post-meta">Publicación de la comunidad</div></div></div>
   <div class="post-body">${esc(p.text)}</div><div class="actions"><button class="action" ${liked.has(p.id)?"disabled aria-pressed=\"true\"":""} onclick="likePost(${p.id},this)">${liked.has(p.id)?"👍 Te gusta":"👍 Me gusta"} · ${Math.max(0,Number(p.likes)||0)}</button>
-  <button class="action" onclick="toggleComments(${p.id})">💬 ${p.comments.length}</button><button class="action" onclick="sendTo('${jsq(p.name)}')">✉️ Mensaje</button></div>
+  <button class="action" onclick="toggleComments(${p.id})">💬 ${p.comments.length}</button><button class="action" data-name="${esc(p.name)}" onclick="sendTo(this.dataset.name)">✉️ Mensaje</button></div>
   <div id="comments-${p.id}" class="hidden"><div style="margin-top:10px">${p.comments.map(c=>`<div class="comment"><b>${esc(c.name)}</b><br>${esc(c.text)}</div>`).join("")}</div>
   <div class="row" style="margin-top:10px"><input id="comment-${p.id}" maxlength="${MAX.comment}" class="input" placeholder="Escribe un comentario"><button class="btn" onclick="commentPost(${p.id})">Comentar</button></div></div></article>`).join(""):`<div class="empty">No hay publicaciones visibles.</div>`;
 }
