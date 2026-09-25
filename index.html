@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="EduGo: organiza, aprende y avanza. Prototipo educativo local.">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EduGo — Organiza, aprende y avanza</title>
 <style>
 :root{
@@ -40,7 +40,7 @@ button{cursor:pointer;border:0}
 .btn.danger{background:#fff0ef;color:var(--danger)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .input,.textarea,.select{width:100%;padding:12px 13px;border:1px solid var(--border);border-radius:11px;background:#fff;outline:none}
-.input:focus,.textarea:focus,.select:focus{border-color:var(--primary)}
+.input:focus,.textarea:focus,.select:focus{border-color:var(--primary);outline:3px solid rgba(91,92,226,.18);outline-offset:1px}\nbutton:focus-visible{outline:3px solid rgba(91,92,226,.35);outline-offset:2px}\nbutton:disabled{cursor:not-allowed;opacity:.65}
 .textarea{min-height:90px;resize:vertical}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .post{position:relative}
@@ -93,13 +93,13 @@ hr{border:0;border-top:1px solid var(--border);margin:18px 0}
     <p class="subtitle">Comunidad escolar + agenda académica en un solo lugar.</p>
     <div class="notice">Prototipo escolar: los datos se guardan en este navegador.</div>
     <label class="small">Nombre</label>
-    <input id="loginName" class="input" placeholder="Ej. Sofía" value="Sofía">
+    <input id="loginName" class="input" maxlength="80" autocomplete="name" placeholder="Ej. Sofía" value="Sofía">
     <label class="small">Tipo de cuenta</label>
     <select id="loginRole" class="select">
       <option value="Estudiante">Estudiante</option>
       <option value="Directivo">Directivo</option>
     </select>
-    <button class="btn" style="width:100%;margin-top:14px" onclick="login()">Entrar a EduGo</button>
+    <button class="btn" style="width:100%;margin-top:14px" aria-label="Entrar a EduGo" onclick="login()">Entrar a EduGo</button>
     <p class="small" style="margin-top:14px">En una versión real, el inicio de sesión usaría cuentas seguras y una base de datos.</p>
   </div>
 </div>
@@ -138,108 +138,240 @@ hr{border:0;border-top:1px solid var(--border);margin:18px 0}
 </div>
 
 <script>
+/*
+ * EduGo — almacenamiento local seguro para prototipo.
+ * IMPORTANTE: localStorage NO es autenticación segura ni una base de datos.
+ * stateVersion permite migraciones futuras sin borrar datos existentes.
+ */
+const STATE_KEY="edugoState";
+const CURRENT_STATE_VERSION=2;
+const MAX={
+  name:80, post:3000, comment:1000, taskTitle:180, subject:100,
+  eventTitle:180, message:1500, recipient:80
+};
+
 const defaultPosts=[
  {id:1,name:"Sofía",role:"Estudiante",text:"¿Alguien quiere compartir consejos para estudiar para el próximo examen de matemáticas?",privacy:"public",likes:4,comments:[{name:"Valentina",text:"Yo hago resúmenes y ejercicios."}]},
  {id:2,name:"Coordinación Académica",role:"Directivo",text:"Recuerden revisar el calendario: esta semana hay actividades académicas importantes.",privacy:"public",likes:7,comments:[]}
 ];
-let state=JSON.parse(localStorage.getItem("edugoState")||"null")||{
- user:null, posts:defaultPosts, likedPosts:{}, tasks:[
-  {id:1,title:"Taller de matemáticas",subject:"Matemáticas",date:"2026-08-25",done:false},
-  {id:2,title:"Lectura de español",subject:"Español",date:"2026-08-27",done:false}
- ],events:[
-  {title:"Examen de Matemáticas",date:"2026-08-25"},
-  {title:"Entrega de Español",date:"2026-08-27"},
-  {title:"Actividad escolar",date:"2026-08-29"}
- ],messages:[],page:"home"
-};
-function save(){localStorage.setItem("edugoState",JSON.stringify(state))}
+
+function safeString(value,fallback=""){return typeof value==="string"?value:fallback}
+function cleanText(value,max){
+  return safeString(value).replace(/\s+/g," ").trim().slice(0,max);
+}
+function safeId(value,fallback){const n=Number(value);return Number.isFinite(n)?n:fallback}
+function safeDate(value){return /^\d{4}-\d{2}-\d{2}$/.test(safeString(value))?value:""}
+function uniqueId(items){
+  let id=Date.now();
+  while(items.some(x=>Number(x?.id)===id)) id++;
+  return id;
+}
+function normalizeComments(comments){
+  if(!Array.isArray(comments)) return [];
+  return comments.map(c=>({
+    name:cleanText(c?.name,"Usuario",MAX.name)||"Usuario",
+    text:cleanText(c?.text,MAX.comment)
+  })).filter(c=>c.text);
+}
+function normalizePosts(posts){
+  if(!Array.isArray(posts)) return defaultPosts.map(p=>({...p,comments:normalizeComments(p.comments)}));
+  return posts.map((p,i)=>({
+    id:safeId(p?.id,i+1),
+    name:cleanText(p?.name,"Usuario",MAX.name)||"Usuario",
+    role:cleanText(p?.role,"Estudiante",40)||"Estudiante",
+    text:cleanText(p?.text,"",MAX.post),
+    privacy:p?.privacy==="private"?"private":"public",
+    likes:Math.max(0,Math.floor(Number.isFinite(Number(p?.likes))?Number(p.likes):0)),
+    comments:normalizeComments(p?.comments)
+  })).filter(p=>p.text);
+}
+function normalizeState(raw){
+  const base={
+    stateVersion:CURRENT_STATE_VERSION,user:null,posts:defaultPosts,tasks:[],events:[],
+    messages:[],likedPosts:{},page:"home"
+  };
+  if(!raw||typeof raw!=="object"||Array.isArray(raw)) return base;
+
+  const next={...base,...raw,stateVersion:CURRENT_STATE_VERSION};
+  if(raw.stateVersion===undefined){
+    // Migration v1 -> v2: conserva todos los datos conocidos y normaliza estructuras.
+    next.likedPosts=raw.likedPosts&&typeof raw.likedPosts==="object"?raw.likedPosts:{};
+  }
+  next.user=raw.user&&typeof raw.user==="object"?{
+    name:cleanText(raw.user.name,"Estudiante",MAX.name)||"Estudiante",
+    role:cleanText(raw.user.role,"Estudiante",40)||"Estudiante"
+  }:null;
+  next.posts=normalizePosts(raw.posts);
+  next.tasks=Array.isArray(raw.tasks)?raw.tasks.map((t,i)=>({
+    id:safeId(t?.id,i+1),title:cleanText(t?.title,"Tarea",MAX.taskTitle)||"Tarea",
+    subject:cleanText(t?.subject,"General",MAX.subject)||"General",
+    date:safeDate(t?.date),done:Boolean(t?.done)
+  })).filter(t=>t.date):[];
+  next.events=Array.isArray(raw.events)?raw.events.map(e=>({
+    title:cleanText(e?.title,"Evento",MAX.eventTitle)||"Evento",date:safeDate(e?.date)
+  })).filter(e=>e.date):[];
+  next.messages=Array.isArray(raw.messages)?raw.messages.map(m=>({
+    from:cleanText(m?.from,"Usuario",MAX.name)||"Usuario",
+    to:cleanText(m?.to,"Usuario",MAX.recipient)||"Usuario",
+    text:cleanText(m?.text,"",MAX.message)
+  })).filter(m=>m.text):[];
+  const likes={};
+  if(raw.likedPosts&&typeof raw.likedPosts==="object"){
+    for(const [user,ids] of Object.entries(raw.likedPosts)){
+      if(Array.isArray(ids)) likes[user]=[...new Set(ids.map(Number).filter(Number.isFinite))];
+    }
+  }
+  next.likedPosts=likes;
+  next.page=["home","forum","tasks","calendar","study","subjects","messages","project"].includes(raw.page)?raw.page:"home";
+  return next;
+}
+
+function loadState(){
+  try{
+    const raw=localStorage.getItem(STATE_KEY);
+    if(!raw){
+      return normalizeState({
+        user:null,posts:defaultPosts,tasks:[
+          {id:1,title:"Taller de matemáticas",subject:"Matemáticas",date:"2026-08-25",done:false},
+          {id:2,title:"Lectura de español",subject:"Español",date:"2026-08-27",done:false}
+        ],events:[
+          {title:"Examen de Matemáticas",date:"2026-08-25"},
+          {title:"Entrega de Español",date:"2026-08-27"},
+          {title:"Actividad escolar",date:"2026-08-29"}
+        ],messages:[],likedPosts:{},page:"home"
+      });
+    }
+    return normalizeState(JSON.parse(raw));
+  }catch(error){
+    console.warn("EduGo: no se pudo leer el estado local; se usarán valores seguros.",error?.name||"storage-error");
+    return normalizeState(null);
+  }
+}
+let state=loadState();
+let likeInProgress=new Set();
+
+function save(){
+  state=normalizeState(state);
+  try{
+    localStorage.setItem(STATE_KEY,JSON.stringify(state));
+    return true;
+  }catch(error){
+    alert("No se pudieron guardar los cambios en este navegador. Revisa el espacio disponible.");
+    return false;
+  }
+}
+
 function login(){
- const name=document.getElementById("loginName").value.trim()||"Estudiante";
- state.user={name,role:document.getElementById("loginRole").value}; state.page="home"; save(); boot();
+  const name=cleanText(document.getElementById("loginName").value,"Estudiante",MAX.name)||"Estudiante";
+  const role=cleanText(document.getElementById("loginRole").value,"Estudiante",40)||"Estudiante";
+  state.user={name,role};state.page="home";save();boot();
 }
 function logout(){state.user=null;save();boot()}
 function boot(){
- document.getElementById("loginScreen").classList.toggle("hidden",!!state.user);
- document.getElementById("app").classList.toggle("hidden",!state.user);
- if(state.user){document.getElementById("userLabel").textContent=state.user.name+" · "+state.user.role;document.getElementById("userAvatar").textContent=state.user.name[0].toUpperCase();showPage(state.page||"home")}
+  document.getElementById("loginScreen").classList.toggle("hidden",!!state.user);
+  document.getElementById("app").classList.toggle("hidden",!state.user);
+  if(state.user){
+    document.getElementById("userLabel").textContent=state.user.name+" · "+state.user.role;
+    document.getElementById("userAvatar").textContent=state.user.name[0]?.toUpperCase()||"E";
+    showPage(state.page||"home");
+  }
 }
 function showPage(p){
- state.page=p;save();
- document.querySelectorAll(".navbtn,.bottom-nav button").forEach(x=>x.classList.toggle("active",x.dataset.page===p));
- const views={home:homeView,forum:forumView,tasks:tasksView,calendar:calendarView,study:studyView,subjects:subjectsView,messages:messagesView,project:projectView};
- document.getElementById("content").innerHTML=views[p]();
- if(p==="forum")renderPosts();
- if(p==="tasks")renderTasks();
- if(p==="calendar")renderCalendar();
- if(p==="messages")renderMessages();
+  if(!state.user)return;
+  const views={home:homeView,forum:forumView,tasks:tasksView,calendar:calendarView,study:studyView,subjects:subjectsView,messages:messagesView,project:projectView};
+  if(!views[p])p="home";
+  state.page=p;save();
+  document.querySelectorAll(".navbtn,.bottom-nav button").forEach(x=>x.classList.toggle("active",x.dataset.page===p));
+  const content=document.getElementById("content");
+  content.textContent="";
+  content.innerHTML=views[p]();
+  if(p==="forum")renderPosts();
+  if(p==="tasks")renderTasks();
+  if(p==="calendar")renderCalendar();
+  if(p==="messages")renderMessages();
 }
 function homeView(){
- const next=state.tasks.filter(t=>!t.done).sort((a,b)=>a.date.localeCompare(b.date))[0];
- const ev=state.events.slice().sort((a,b)=>a.date.localeCompare(b.date))[0];
- return `<h1 class="page-title">¡Hola, ${esc(state.user.name)}! 👋</h1>
- <p class="subtitle">Todo lo que necesitas para organizar tu vida escolar.</p>
- <div class="card hero"><h2>EduGo</h2><p>“Organiza, aprende y avanza.”</p><button class="btn secondary" onclick="showPage('forum')">Entrar al foro</button></div>
- <div class="grid">
-  <div class="stat"><span class="small">Próxima tarea</span><strong>${next?esc(next.title):"Sin tareas"}</strong><span class="small">${next?next.date:"Todo al día"}</span></div>
-  <div class="stat"><span class="small">Próximo evento</span><strong>${ev?esc(ev.title):"Sin eventos"}</strong><span class="small">${ev?ev.date:"Agrega uno"}</span></div>
- </div>
- <div class="card"><h3>🚀 Accesos rápidos</h3><div class="row">
- <button class="btn" onclick="showPage('tasks')">📝 Mis tareas</button><button class="btn secondary" onclick="showPage('calendar')">📅 Calendario</button><button class="btn secondary" onclick="showPage('study')">📚 Estudiar</button></div></div>
- <div class="card"><h3>💡 Recordatorio</h3><p>Organiza tus tareas, revisa tus fechas y participa responsablemente en la comunidad escolar.</p></div>`;
+  const next=state.tasks.filter(t=>!t.done).sort((a,b)=>a.date.localeCompare(b.date))[0];
+  const ev=state.events.slice().sort((a,b)=>a.date.localeCompare(b.date))[0];
+  return `<h1 class="page-title">¡Hola, ${esc(state.user.name)}! 👋</h1>
+  <p class="subtitle">Todo lo que necesitas para organizar tu vida escolar.</p>
+  <div class="card hero"><h2>EduGo</h2><p>“Organiza, aprende y avanza.”</p><button class="btn secondary" onclick="showPage('forum')">Entrar al foro</button></div>
+  <div class="grid"><div class="stat"><span class="small">Próxima tarea</span><strong>${next?esc(next.title):"Sin tareas"}</strong><span class="small">${next?esc(next.date):"Todo al día"}</span></div>
+  <div class="stat"><span class="small">Próximo evento</span><strong>${ev?esc(ev.title):"Sin eventos"}</strong><span class="small">${ev?esc(ev.date):"Agrega uno"}</span></div></div>
+  <div class="card"><h3>🚀 Accesos rápidos</h3><div class="row"><button class="btn" onclick="showPage('tasks')">📝 Mis tareas</button><button class="btn secondary" onclick="showPage('calendar')">📅 Calendario</button><button class="btn secondary" onclick="showPage('study')">📚 Estudiar</button></div></div>
+  <div class="card"><h3>💡 Recordatorio</h3><p>Organiza tus tareas, revisa tus fechas y participa responsablemente en la comunidad escolar.</p></div>`;
 }
 function forumView(){return `<h1 class="page-title">💬 Foro EduGo</h1><p class="subtitle">Publica, comenta y comparte ideas con estudiantes y directivos.</p>
- <div class="card"><h3>Crear publicación</h3>
- <textarea id="postText" class="textarea" placeholder="¿Qué quieres compartir con la comunidad?"></textarea>
- <div class="row" style="margin-top:10px"><select id="postPrivacy" class="select" style="max-width:180px"><option value="public">🌐 Pública</option><option value="private">🔒 Privada</option></select><button class="btn" onclick="addPost()">Publicar</button></div></div>
- <div id="posts"></div>`}
+<div class="card"><h3>Crear publicación</h3><textarea id="postText" class="textarea" maxlength="${MAX.post}" placeholder="¿Qué quieres compartir con la comunidad?"></textarea>
+<div class="row" style="margin-top:10px"><select id="postPrivacy" class="select" style="max-width:180px"><option value="public">🌐 Pública</option><option value="private">🔒 Privada</option></select><button class="btn" onclick="addPost()">Publicar</button></div></div><div id="posts"></div>`}
 function addPost(){
- const text=document.getElementById("postText").value.trim(); if(!text)return alert("Escribe algo antes de publicar.");
- state.posts.unshift({id:Date.now(),name:state.user.name,role:state.user.role,text,privacy:document.getElementById("postPrivacy").value,likes:0,comments:[]});save();showPage("forum")
+  const input=document.getElementById("postText");const text=cleanText(input?.value,"",MAX.post);
+  if(!text)return alert("Escribe algo antes de publicar.");
+  if(text.length>MAX.post)return alert("La publicación es demasiado larga.");
+  state.posts.unshift({id:uniqueId(state.posts),name:state.user.name,role:state.user.role,text,privacy:document.getElementById("postPrivacy").value==="private"?"private":"public",likes:0,comments:[]});
+  if(save())showPage("forum");
 }
 function renderPosts(){
- const el=document.getElementById("posts");
- const visible=state.posts.filter(p=>p.privacy==="public"||p.name===state.user.name);
- el.innerHTML=visible.length?visible.map(p=>`<article class="card post"><div class="post-head"><div class="avatar">${esc(p.name[0])}</div><div><div class="post-name">${esc(p.name)} <span class="badge">${esc(p.role)}</span> <span class="badge ${p.privacy}">${p.privacy==="public"?"🌐 Pública":"🔒 Privada"}</span></div><div class="post-meta">Publicación de la comunidad</div></div></div>
- <div class="post-body">${esc(p.text)}</div><div class="actions"><button class="action" onclick="likePost(${p.id})">${(state.likedPosts?.[String(state.user?.name||"").trim().toLowerCase()]||[]).includes(p.id)?"👍 Te gusta":"👍 Me gusta"} · ${p.likes}</button><button class="action" onclick="toggleComments(${p.id})">💬 ${p.comments.length}</button><button class="action" onclick="sendTo('${jsq(p.name)}')">✉️ Mensaje</button></div>
- <div id="comments-${p.id}" class="hidden"><div style="margin-top:10px">${p.comments.map(c=>`<div class="comment"><b>${esc(c.name)}</b><br>${esc(c.text)}</div>`).join("")}</div><div class="row" style="margin-top:10px"><input id="comment-${p.id}" class="input" placeholder="Escribe un comentario"><button class="btn" onclick="commentPost(${p.id})">Comentar</button></div></div></article>`).join(""):`<div class="empty">No hay publicaciones visibles.</div>`;
+  const el=document.getElementById("posts");if(!el)return;
+  const key=String(state.user?.name||"guest").trim().toLowerCase();
+  const liked=new Set(Array.isArray(state.likedPosts?.[key])?state.likedPosts[key]:[]);
+  const visible=state.posts.filter(p=>p.privacy==="public"||p.name===state.user.name);
+  el.innerHTML=visible.length?visible.map(p=>`<article class="card post">
+  <div class="post-head"><div class="avatar">${esc(p.name[0]||"U")}</div><div><div class="post-name">${esc(p.name)} <span class="badge">${esc(p.role)}</span> <span class="badge ${p.privacy}">${p.privacy==="public"?"🌐 Pública":"🔒 Privada"}</span></div><div class="post-meta">Publicación de la comunidad</div></div></div>
+  <div class="post-body">${esc(p.text)}</div><div class="actions"><button class="action" ${liked.has(p.id)?"disabled aria-pressed=\"true\"":""} onclick="likePost(${p.id},this)">${liked.has(p.id)?"👍 Te gusta":"👍 Me gusta"} · ${Math.max(0,Number(p.likes)||0)}</button>
+  <button class="action" onclick="toggleComments(${p.id})">💬 ${p.comments.length}</button><button class="action" onclick="sendTo('${jsq(p.name)}')">✉️ Mensaje</button></div>
+  <div id="comments-${p.id}" class="hidden"><div style="margin-top:10px">${p.comments.map(c=>`<div class="comment"><b>${esc(c.name)}</b><br>${esc(c.text)}</div>`).join("")}</div>
+  <div class="row" style="margin-top:10px"><input id="comment-${p.id}" maxlength="${MAX.comment}" class="input" placeholder="Escribe un comentario"><button class="btn" onclick="commentPost(${p.id})">Comentar</button></div></div></article>`).join(""):`<div class="empty">No hay publicaciones visibles.</div>`;
 }
-function likePost(id){const userKey=String(state.user?.name||"guest").trim().toLowerCase();if(!userKey)return;if(!state.likedPosts||typeof state.likedPosts!=="object")state.likedPosts={};if(!Array.isArray(state.likedPosts[userKey]))state.likedPosts[userKey]=[];if(state.likedPosts[userKey].includes(id)){alert("Ya diste Me gusta a esta publicación.");return}const p=state.posts.find(x=>x.id===id);if(!p)return;p.likes=Math.max(0,Number(p.likes)||0)+1;state.likedPosts[userKey].push(id);save();renderPosts()}
-function toggleComments(id){document.getElementById("comments-"+id).classList.toggle("hidden")}
-function commentPost(id){const input=document.getElementById("comment-"+id),text=input.value.trim();if(!text)return;state.posts.find(p=>p.id===id).comments.push({name:state.user.name,text});save();renderPosts();document.getElementById("comments-"+id).classList.remove("hidden")}
+function likePost(id,button){
+  if(likeInProgress.has(id))return;
+  likeInProgress.add(id);
+  if(button){button.disabled=true;button.setAttribute("aria-busy","true");}
+  try{
+    const userKey=String(state.user?.name||"guest").trim().toLowerCase();if(!userKey)return;
+    if(!state.likedPosts||typeof state.likedPosts!=="object")state.likedPosts={};
+    if(!Array.isArray(state.likedPosts[userKey]))state.likedPosts[userKey]=[];
+    const p=state.posts.find(x=>Number(x?.id)===Number(id));
+    if(!p)return;
+    if(state.likedPosts[userKey].some(x=>Number(x)===Number(id))){
+      if(button){button.textContent="👍 Te gusta";button.removeAttribute("aria-busy");}
+      return;
+    }
+    p.likes=Math.max(0,Math.floor(Number.isFinite(Number(p.likes))?Number(p.likes):0))+1;
+    state.likedPosts[userKey].push(p.id);
+    save();renderPosts();
+  }finally{
+    likeInProgress.delete(id);
+  }
+}
+function toggleComments(id){const el=document.getElementById("comments-"+id);if(el)el.classList.toggle("hidden")}
+function commentPost(id){
+  const input=document.getElementById("comment-"+id),text=cleanText(input?.value,"",MAX.comment);
+  const p=state.posts.find(x=>Number(x?.id)===Number(id));
+  if(!p||!text)return;
+  p.comments.push({name:state.user.name,text});if(save()){renderPosts();setTimeout(()=>document.getElementById("comments-"+id)?.classList.remove("hidden"),0)}
+}
 function tasksView(){return `<h1 class="page-title">📝 Mis tareas</h1><p class="subtitle">Organiza tus actividades y marca lo que ya terminaste.</p>
- <div class="card"><h3>Agregar tarea</h3><div class="form-grid"><input id="taskTitle" class="input" placeholder="Nombre de la tarea"><input id="taskSubject" class="input" placeholder="Materia"><input id="taskDate" class="input" type="date"><button class="btn" onclick="addTask()">Agregar tarea</button></div></div><div class="card"><div id="taskList"></div></div>`}
-function addTask(){let title=document.getElementById("taskTitle").value.trim();let subject=document.getElementById("taskSubject").value.trim()||"General";let date=document.getElementById("taskDate").value;if(!title||!date)return alert("Completa nombre y fecha.");state.tasks.push({id:Date.now(),title,subject,date,done:false});save();showPage("tasks")}
-function renderTasks(){const el=document.getElementById("taskList");const list=state.tasks.slice().sort((a,b)=>a.date.localeCompare(b.date));el.innerHTML=list.length?list.map(t=>`<div class="task"><div><b class="${t.done?"done":""}">${esc(t.title)}</b><div class="small">${esc(t.subject)} · ${t.date}</div></div><div class="row"><button class="btn secondary" onclick="toggleTask(${t.id})">${t.done?"↩️ Reabrir":"✅ Completar"}</button><button class="btn danger" onclick="deleteTask(${t.id})">🗑️</button></div></div>`).join(""):`<div class="empty">No tienes tareas registradas.</div>`}
-function toggleTask(id){const t=state.tasks.find(x=>x.id===id);t.done=!t.done;save();showPage("tasks")}
-function deleteTask(id){state.tasks=state.tasks.filter(x=>x.id!==id);save();showPage("tasks")}
-function calendarView(){return `<h1 class="page-title">📅 Calendario</h1><p class="subtitle">Exámenes, trabajos y actividades escolares.</p><div class="card"><div id="calendar"></div></div><div class="card"><h3>Agregar evento</h3><div class="form-grid"><input id="eventTitle" class="input" placeholder="Examen, trabajo o actividad"><input id="eventDate" class="input" type="date"><button class="btn" onclick="addEvent()">Agregar evento</button></div></div>`}
-function renderCalendar(){const el=document.getElementById("calendar");let now=new Date();let y=now.getFullYear(),m=now.getMonth();let first=new Date(y,m,1).getDay();let days=new Date(y,m+1,0).getDate();let h="<div class='calendar'>"+["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"].map(d=>`<div class='small'><b>${d}</b></div>`).join("");for(let i=0;i<first;i++)h+="<div></div>";for(let d=1;d<=days;d++){let ds=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;let es=state.events.filter(e=>e.date===ds);h+=`<div class='day'><b>${d}</b>${es.map(e=>`<div class='event'>${esc(e.title)}</div>`).join("")}</div>`}el.innerHTML=h+"</div>"}
-function addEvent(){let title=document.getElementById("eventTitle").value.trim(),date=document.getElementById("eventDate").value;if(!title||!date)return alert("Completa el evento.");state.events.push({title,date});save();showPage("calendar")}
-function studyView(){return `<h1 class="page-title">📚 Zona de estudio</h1><p class="subtitle">Recursos y consejos para estudiar mejor.</p><div class="grid">
- <div class="card"><h3>⏱️ Técnica 25/5</h3><p>Estudia 25 minutos y descansa 5. Repite el ciclo y haz una pausa más larga después de varios ciclos.</p></div>
- <div class="card"><h3>📝 Resúmenes</h3><p>Escribe las ideas principales con tus propias palabras y usa ejemplos sencillos.</p></div>
- <div class="card"><h3>🎯 Metas pequeñas</h3><p>Divide una tarea grande en pasos cortos y marca cada avance.</p></div>
- <div class="card"><h3>🤝 Comunidad</h3><p>Pregunta en el foro y comparte recursos académicos respetando a los demás.</p></div>
- </div>`}
-function subjectsView(){let subs=["Matemáticas","Español","Ciencias","Sociales","Inglés","Cosmetología","Etc."];return `<h1 class="page-title">📖 Mis materias</h1><p class="subtitle">Accede a tus áreas escolares.</p><div class="card">${subs.map(s=>`<div class="subject"><span>📘 ${s}</span><button class="btn secondary" onclick="showSubject('${jsq(s)}')">Ver</button></div>`).join("")}</div>`}
+<div class="card"><h3>Agregar tarea</h3><div class="form-grid"><input id="taskTitle" maxlength="${MAX.taskTitle}" class="input" placeholder="Nombre de la tarea"><input id="taskSubject" maxlength="${MAX.subject}" class="input" placeholder="Materia"><input id="taskDate" class="input" type="date"><button class="btn" onclick="addTask()">Agregar tarea</button></div></div><div class="card"><div id="taskList"></div></div>`}
+function addTask(){const title=cleanText(document.getElementById("taskTitle")?.value,"",MAX.taskTitle),subject=cleanText(document.getElementById("taskSubject")?.value,"General",MAX.subject)||"General",date=document.getElementById("taskDate")?.value;if(!title||!safeDate(date))return alert("Completa nombre y fecha.");state.tasks.push({id:uniqueId(state.tasks),title,subject,date,done:false});save();showPage("tasks")}
+function renderTasks(){const el=document.getElementById("taskList");if(!el)return;const list=state.tasks.slice().sort((a,b)=>a.date.localeCompare(b.date));el.innerHTML=list.length?list.map(t=>`<div class="task"><div><b class="${t.done?"done":""}">${esc(t.title)}</b><div class="small">${esc(t.subject)} · ${esc(t.date)}</div></div><div class="row"><button class="btn secondary" onclick="toggleTask(${t.id})">${t.done?"↩️ Reabrir":"✅ Completar"}</button><button class="btn danger" onclick="deleteTask(${t.id})">🗑️</button></div></div>`).join(""):`<div class="empty">No tienes tareas registradas.</div>`}
+function toggleTask(id){const t=state.tasks.find(x=>Number(x?.id)===Number(id));if(!t)return;t.done=!t.done;save();showPage("tasks")}
+function deleteTask(id){state.tasks=state.tasks.filter(x=>Number(x?.id)!==Number(id));save();showPage("tasks")}
+function calendarView(){return `<h1 class="page-title">📅 Calendario</h1><p class="subtitle">Exámenes, trabajos y actividades escolares.</p><div class="card"><div id="calendar"></div></div><div class="card"><h3>Agregar evento</h3><div class="form-grid"><input id="eventTitle" maxlength="${MAX.eventTitle}" class="input" placeholder="Examen, trabajo o actividad"><input id="eventDate" class="input" type="date"><button class="btn" onclick="addEvent()">Agregar evento</button></div></div>`}
+function renderCalendar(){const el=document.getElementById("calendar");if(!el)return;const now=new Date(),y=now.getFullYear(),m=now.getMonth(),first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();let h="<div class='calendar'>"+["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"].map(d=>`<div class='small'><b>${d}</b></div>`).join("");for(let i=0;i<first;i++)h+="<div></div>";for(let d=1;d<=days;d++){const ds=`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`,es=state.events.filter(e=>e.date===ds);h+=`<div class='day'><b>${d}</b>${es.map(e=>`<div class='event'>${esc(e.title)}</div>`).join("")}</div>`}el.innerHTML=h+"</div>"}
+function addEvent(){const title=cleanText(document.getElementById("eventTitle")?.value,"",MAX.eventTitle),date=document.getElementById("eventDate")?.value;if(!title||!safeDate(date))return alert("Completa el evento.");if(state.events.some(e=>e.title===title&&e.date===date))return alert("Ese evento ya existe en esa fecha.");state.events.push({title,date});save();showPage("calendar")}
+function studyView(){return `<h1 class="page-title">📚 Zona de estudio</h1><p class="subtitle">Recursos y consejos para estudiar mejor.</p><div class="grid"><div class="card"><h3>⏱️ Técnica 25/5</h3><p>Estudia 25 minutos y descansa 5. Repite el ciclo y haz una pausa más larga después de varios ciclos.</p></div><div class="card"><h3>📝 Resúmenes</h3><p>Escribe las ideas principales con tus propias palabras y usa ejemplos sencillos.</p></div><div class="card"><h3>🎯 Metas pequeñas</h3><p>Divide una tarea grande en pasos cortos y marca cada avance.</p></div><div class="card"><h3>🤝 Comunidad</h3><p>Pregunta en el foro y comparte recursos académicos respetando a los demás.</p></div></div>`}
+function subjectsView(){const subs=["Matemáticas","Español","Ciencias","Sociales","Inglés","Cosmetología","Etc."];return `<h1 class="page-title">📖 Mis materias</h1><p class="subtitle">Accede a tus áreas escolares.</p><div class="card">${subs.map(s=>`<div class="subject"><span>📘 ${esc(s)}</span><button class="btn secondary" onclick="showSubject('${jsq(s)}')">Ver</button></div>`).join("")}</div>`}
 function showSubject(s){openModal(`<h2>📘 ${esc(s)}</h2><p>Esta sección puede contener tareas, apuntes, recursos y publicaciones relacionadas con ${esc(s)}.</p><button class="btn" onclick="closeModal()">Cerrar</button>`)}
-function messagesView(){return `<h1 class="page-title">✉️ Mensajes</h1><p class="subtitle">Comunícate con otros miembros de la comunidad escolar.</p><div class="card"><div class="row"><input id="msgTo" class="input" placeholder="Destinatario" style="max-width:220px"><input id="msgText" class="input" placeholder="Escribe un mensaje"><button class="btn" onclick="sendMessage()">Enviar</button></div></div><div id="messageList"></div>`}
-function sendMessage(){let to=document.getElementById("msgTo").value.trim(),text=document.getElementById("msgText").value.trim();if(!to||!text)return alert("Completa destinatario y mensaje.");state.messages.unshift({from:state.user.name,to,text});save();showPage("messages")}
-function sendTo(name){showPage("messages");setTimeout(()=>{document.getElementById("msgTo").value=name},0)}
-function renderMessages(){document.getElementById("messageList").innerHTML=state.messages.length?state.messages.map(m=>`<div class="card"><b>${esc(m.from)}</b> → <b>${esc(m.to)}</b><p>${esc(m.text)}</p></div>`).join(""):`<div class="empty">Todavía no tienes mensajes.</div>`}
-function projectView(){return `<h1 class="page-title">ℹ️ Proyecto EduGo</h1><p class="subtitle">Resumen para presentar el proyecto de TecnoMax.</p>
- <div class="card"><h3>Nombre</h3><p><b>EduGo</b></p><p><b>Slogan:</b> “Organiza, aprende y avanza.”</p><p><b>Significado:</b> Edu = educación · Go = avanzar.</p></div>
- <div class="card"><h3>Problema</h3><p>Muchos estudiantes olvidan tareas, exámenes y actividades o tienen dificultades para organizar su tiempo de estudio. EduGo reúne esta información y además crea una comunidad escolar.</p></div>
- <div class="card"><h3>Objetivo general</h3><p>Crear una aplicación que ayude a los estudiantes del colegio a organizar sus tareas, exámenes, horarios y actividades escolares de una manera sencilla.</p><h3>Objetivos específicos</h3><ul><li>Organizar tareas pendientes.</li><li>Recordar fechas de exámenes y trabajos.</li><li>Mostrar el horario de clases.</li><li>Ayudar a organizar el tiempo.</li><li>Proporcionar consejos y recursos para estudiar.</li><li>Facilitar la comunicación entre estudiantes y directivos.</li></ul></div>
- <div class="card"><h3>¿A quién va dirigida?</h3><p>Principalmente a estudiantes del colegio, especialmente quienes necesitan ayuda para organizar sus actividades académicas, y también a directivos que necesiten comunicar información escolar.</p></div>
- <div class="card"><h3>Funciones principales</h3><ul><li>Cuenta de estudiante o directivo.</li><li>Foro con publicaciones, reacciones y comentarios.</li><li>Publicaciones públicas o privadas.</li><li>Mensajes privados.</li><li>Inicio con próxima tarea, próximo examen y recordatorios.</li><li>Mis materias: Matemáticas, Español, Ciencias, Sociales, Inglés, Cosmetología y otras.</li><li>Mis tareas con nombre, materia, fecha y estado pendiente/completada.</li><li>Calendario de exámenes, trabajos y actividades.</li><li>Zona de estudio con pequeños resúmenes y consejos.</li></ul></div>
- <div class="card"><h3>Diseño</h3><ul><li>Fondo claro.</li><li>Botones grandes.</li><li>Íconos fáciles de reconocer.</li><li>Letras grandes y fáciles de leer.</li><li>Menú inferior: Inicio | Foro | Tareas | Calendario | Estudio.</li></ul></div>
- <div class="card"><h3>Pantallas</h3><ol><li>Pantalla de inicio.</li><li>Inicio de sesión.</li><li>Menú principal.</li><li>Foro.</li><li>Mis tareas.</li><li>Calendario.</li><li>Zona de estudio.</li><li>Mensajes.</li><li>Mis materias.</li></ol></div>
- <div class="card"><h3>Tecnología</h3><p>Este archivo es un prototipo funcional que puede abrirse en un navegador. Para convertirlo en una aplicación real con cuentas, mensajes entre dispositivos, moderación y base de datos, se necesitaría un backend y autenticación segura.</p></div>`}
-function openModal(html){document.getElementById("modalBody").innerHTML=html;document.getElementById("modal").classList.remove("hidden")}
+function messagesView(){return `<h1 class="page-title">✉️ Mensajes</h1><p class="subtitle">Comunícate con otros miembros de la comunidad escolar.</p><div class="card"><div class="row"><input id="msgTo" maxlength="${MAX.recipient}" class="input" placeholder="Destinatario" style="max-width:220px"><input id="msgText" maxlength="${MAX.message}" class="input" placeholder="Escribe un mensaje"><button class="btn" onclick="sendMessage()">Enviar</button></div></div><div id="messageList"></div>`}
+function sendMessage(){const to=cleanText(document.getElementById("msgTo")?.value,"",MAX.recipient),text=cleanText(document.getElementById("msgText")?.value,"",MAX.message);if(!to||!text)return alert("Completa destinatario y mensaje.");state.messages.unshift({from:state.user.name,to,text});save();showPage("messages")}
+function sendTo(name){showPage("messages");setTimeout(()=>{const el=document.getElementById("msgTo");if(el)el.value=cleanText(name,"",MAX.recipient)},0)}
+function renderMessages(){const el=document.getElementById("messageList");if(!el)return;el.innerHTML=state.messages.length?state.messages.map(m=>`<div class="card"><b>${esc(m.from)}</b> → <b>${esc(m.to)}</b><p>${esc(m.text)}</p></div>`).join(""):`<div class="empty">Todavía no tienes mensajes.</div>`}
+function projectView(){return `<h1 class="page-title">ℹ️ Proyecto EduGo</h1><p class="subtitle">Resumen para presentar el proyecto de TecnoMax.</p><div class="card"><h3>Nombre</h3><p><b>EduGo</b></p><p><b>Slogan:</b> “Organiza, aprende y avanza.”</p><p><b>Significado:</b> Edu = educación · Go = avanzar.</p></div><div class="card"><h3>Problema</h3><p>Muchos estudiantes olvidan tareas, exámenes y actividades o tienen dificultades para organizar su tiempo de estudio. EduGo reúne esta información y además crea una comunidad escolar.</p></div><div class="card"><h3>Objetivo general</h3><p>Crear una aplicación que ayude a los estudiantes del colegio a organizar sus tareas, exámenes, horarios y actividades escolares de una manera sencilla.</p><h3>Objetivos específicos</h3><ul><li>Organizar tareas pendientes.</li><li>Recordar fechas de exámenes y trabajos.</li><li>Mostrar el horario de clases.</li><li>Ayudar a organizar el tiempo.</li><li>Proporcionar consejos y recursos para estudiar.</li><li>Facilitar la comunicación entre estudiantes y directivos.</li></ul></div><div class="card"><h3>¿A quién va dirigida?</h3><p>Principalmente a estudiantes del colegio, especialmente quienes necesitan ayuda para organizar sus actividades académicas, y también a directivos que necesiten comunicar información escolar.</p></div><div class="card"><h3>Funciones principales</h3><ul><li>Cuenta de estudiante o directivo.</li><li>Foro con publicaciones, reacciones y comentarios.</li><li>Publicaciones públicas o privadas.</li><li>Mensajes privados.</li><li>Inicio con próxima tarea, próximo examen y recordatorios.</li><li>Mis materias: Matemáticas, Español, Ciencias, Sociales, Inglés, Cosmetología y otras.</li><li>Mis tareas con nombre, materia, fecha y estado pendiente/completada.</li><li>Calendario de exámenes, trabajos y actividades.</li><li>Zona de estudio con pequeños resúmenes y consejos.</li></ul></div><div class="card"><h3>Diseño</h3><ul><li>Fondo claro.</li><li>Botones grandes.</li><li>Íconos fáciles de reconocer.</li><li>Letras grandes y fáciles de leer.</li><li>Menú inferior: Inicio | Foro | Tareas | Calendario | Estudio.</li></ul></div><div class="card"><h3>Pantallas</h3><ol><li>Pantalla de inicio.</li><li>Inicio de sesión.</li><li>Menú principal.</li><li>Foro.</li><li>Mis tareas.</li><li>Calendario.</li><li>Zona de estudio.</li><li>Mensajes.</li><li>Mis materias.</li></ol></div><div class="card"><h3>Tecnología</h3><p>Este archivo es un prototipo funcional que puede abrirse en un navegador. Los datos se guardan localmente en este dispositivo. Para convertirlo en una aplicación multiusuario real con sincronización, moderación, autenticación y base de datos, se necesitaría un backend seguro.</p></div>`}
+function openModal(html){document.getElementById("modalBody").textContent="";document.getElementById("modalBody").innerHTML=html;document.getElementById("modal").classList.remove("hidden")}
 function closeModal(e){if(!e||e.target.id==="modal")document.getElementById("modal").classList.add("hidden")}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
-function jsq(s){return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
 boot();
 </script>
 </body>
