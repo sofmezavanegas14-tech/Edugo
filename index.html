@@ -171,6 +171,9 @@ function normalizeState(raw){
   if(!raw||typeof raw!=="object"||Array.isArray(raw)) return base;
 
   const next={...base,...raw,stateVersion:CURRENT_STATE_VERSION};
+  // Never persist legacy server-data replicas from older EduGo versions.
+  delete next.posts;
+  delete next.likedPosts;
   if(raw.stateVersion===undefined){
   }
   next.user=raw.user&&typeof raw.user==="object"?{
@@ -206,7 +209,7 @@ function loadState(){
           {title:"Examen de Matemáticas",date:"2026-08-25"},
           {title:"Entrega de Español",date:"2026-08-27"},
           {title:"Actividad escolar",date:"2026-08-29"}
-        ],messages:[],likedPosts:{},page:"home"
+        ],messages:[],page:"home"
       });
     }
     return normalizeState(JSON.parse(raw));
@@ -216,7 +219,6 @@ function loadState(){
   }
 }
 let state=loadState();
-let likeInProgress=new Set();
 
 function save(){
   state=normalizeState(state);
