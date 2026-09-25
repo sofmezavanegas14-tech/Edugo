@@ -164,7 +164,10 @@
       authorName: profileMap.get(p.author_id)?.display_name || profileMap.get(p.author_id)?.username || "Usuario",
       likeCount: counts.get(p.id) || 0,
       likedByMe: mine.has(p.id),
-      comments: grouped.get(p.id) || []
+      comments: (grouped.get(p.id) || []).map(c => ({
+        ...c,
+        authorName: profileMap.get(c.author_id)?.display_name || profileMap.get(c.author_id)?.username || "Usuario"
+      }))
     }));
   }
 
@@ -179,8 +182,7 @@
         const name = String(p.authorName || "Usuario");
         const safeName = esc(name);
         const commentHtml = (p.comments || []).map(c => {
-          const cp = profileMap.get(c.author_id);
-          const cn = cp?.display_name || cp?.username || "Usuario";
+          const cn = c.authorName || "Usuario";
           return '<div class="comment"><b>' + esc(cn) + '</b><br>' + esc(c.content) + '</div>';
         }).join("");
         const likeText = p.likedByMe ? "❤️ Te gusta" : "♡ Me gusta";
