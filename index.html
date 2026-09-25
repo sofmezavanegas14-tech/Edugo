@@ -91,7 +91,7 @@ hr{border:0;border-top:1px solid var(--border);margin:18px 0}
     <div class="brand"><div class="logo">E</div>EduGo</div>
     <h1>Organiza, aprende y avanza.</h1>
     <p class="subtitle">Comunidad escolar + agenda académica en un solo lugar.</p>
-    <div class="notice">Cuenta segura con Supabase Auth. Tus likes ya no dependen de localStorage.</div>
+    <div class="notice">Cuenta segura con Supabase Auth. Las publicaciones, comentarios y likes se guardan en Supabase.</div>
     <label class="small">Nombre (solo al crear la cuenta)</label>
     <input id="loginName" class="input" maxlength="80" autocomplete="name" placeholder="Ej. Sofía">
     <label class="small">Correo electrónico</label>
@@ -102,7 +102,7 @@ hr{border:0;border-top:1px solid var(--border);margin:18px 0}
       <button class="btn" style="flex:1" aria-label="Entrar a EduGo" onclick="login()">Iniciar sesión</button>
       <button class="btn secondary" style="flex:1" onclick="register()">Crear cuenta</button>
     </div>
-    <p id="authMsg" class="small" style="margin-top:14px">Las cuentas nuevas usan Supabase Auth. Los datos locales antiguos se conservan y no se borran.</p>
+    <p id="authMsg" class="small" style="margin-top:14px">La sesión, publicaciones, comentarios y likes se gestionan con Supabase. Las preferencias locales no sustituyen al servidor.</p>
   </div>
 </div>
 
@@ -152,11 +152,6 @@ const MAX={
   eventTitle:180, message:1500, recipient:80
 };
 
-const defaultPosts=[
- {id:1,name:"Sofía",role:"Estudiante",text:"¿Alguien quiere compartir consejos para estudiar para el próximo examen de matemáticas?",privacy:"public",likes:4,comments:[{name:"Valentina",text:"Yo hago resúmenes y ejercicios."}]},
- {id:2,name:"Coordinación Académica",role:"Directivo",text:"Recuerden revisar el calendario: esta semana hay actividades académicas importantes.",privacy:"public",likes:7,comments:[]}
-];
-
 function safeString(value,fallback=""){return typeof value==="string"?value:fallback}
 function cleanText(value,max){
   return safeString(value).replace(/\s+/g," ").trim().slice(0,max);
@@ -168,42 +163,20 @@ function uniqueId(items){
   while(items.some(x=>Number(x?.id)===id)) id++;
   return id;
 }
-function normalizeComments(comments){
-  if(!Array.isArray(comments)) return [];
-  return comments.map(c=>({
-    name:cleanText(c?.name,"Usuario",MAX.name)||"Usuario",
-    text:cleanText(c?.text,MAX.comment)
-  })).filter(c=>c.text);
-}
-function normalizePosts(posts){
-  if(!Array.isArray(posts)) return defaultPosts.map(p=>({...p,comments:normalizeComments(p.comments)}));
-  return posts.map((p,i)=>({
-    id:safeId(p?.id,i+1),
-    name:cleanText(p?.name,"Usuario",MAX.name)||"Usuario",
-    role:cleanText(p?.role,"Estudiante",40)||"Estudiante",
-    text:cleanText(p?.text,"",MAX.post),
-    privacy:p?.privacy==="private"?"private":"public",
-    likes:Math.max(0,Math.floor(Number.isFinite(Number(p?.likes))?Number(p.likes):0)),
-    comments:normalizeComments(p?.comments)
-  })).filter(p=>p.text);
-}
 function normalizeState(raw){
   const base={
-    stateVersion:CURRENT_STATE_VERSION,user:null,posts:defaultPosts,tasks:[],events:[],
-    messages:[],likedPosts:{},page:"home"
+    stateVersion:CURRENT_STATE_VERSION,user:null,tasks:[],events:[],
+    messages:[],page:"home"
   };
   if(!raw||typeof raw!=="object"||Array.isArray(raw)) return base;
 
   const next={...base,...raw,stateVersion:CURRENT_STATE_VERSION};
   if(raw.stateVersion===undefined){
-    // Migration v1 -> v2: conserva todos los datos conocidos y normaliza estructuras.
-    next.likedPosts=raw.likedPosts&&typeof raw.likedPosts==="object"?raw.likedPosts:{};
   }
   next.user=raw.user&&typeof raw.user==="object"?{
     name:cleanText(raw.user.name,"Estudiante",MAX.name)||"Estudiante",
     role:cleanText(raw.user.role,"Estudiante",40)||"Estudiante"
   }:null;
-  next.posts=normalizePosts(raw.posts);
   next.tasks=Array.isArray(raw.tasks)?raw.tasks.map((t,i)=>({
     id:safeId(t?.id,i+1),title:cleanText(t?.title,"Tarea",MAX.taskTitle)||"Tarea",
     subject:cleanText(t?.subject,"General",MAX.subject)||"General",
@@ -217,13 +190,6 @@ function normalizeState(raw){
     to:cleanText(m?.to,"Usuario",MAX.recipient)||"Usuario",
     text:cleanText(m?.text,"",MAX.message)
   })).filter(m=>m.text):[];
-  const likes={};
-  if(raw.likedPosts&&typeof raw.likedPosts==="object"){
-    for(const [user,ids] of Object.entries(raw.likedPosts)){
-      if(Array.isArray(ids)) likes[user]=[...new Set(ids.map(Number).filter(Number.isFinite))];
-    }
-  }
-  next.likedPosts=likes;
   next.page=["home","forum","tasks","calendar","study","subjects","messages","project"].includes(raw.page)?raw.page:"home";
   return next;
 }
@@ -270,13 +236,9 @@ function login(){
 }
 function logout(){state.user=null;save();boot()}
 function boot(){
-  document.getElementById("loginScreen").classList.toggle("hidden",!!state.user);
-  document.getElementById("app").classList.toggle("hidden",!state.user);
-  if(state.user){
-    document.getElementById("userLabel").textContent=state.user.name+" · "+state.user.role;
-    document.getElementById("userAvatar").textContent=state.user.name[0]?.toUpperCase()||"E";
-    showPage(state.page||"home");
-  }
+  // Supabase Auth is the only source of authentication state.
+  document.getElementById("loginScreen").classList.remove("hidden");
+  document.getElementById("app").classList.add("hidden");
 }
 function showPage(p){
   if(!state.user)return;
@@ -287,7 +249,7 @@ function showPage(p){
   const content=document.getElementById("content");
   content.textContent="";
   content.innerHTML=views[p]();
-  if(p==="forum")renderPosts();
+  if(p==="forum")window.renderPosts?.();
   if(p==="tasks")renderTasks();
   if(p==="calendar")renderCalendar();
   if(p==="messages")renderMessages();
@@ -306,53 +268,6 @@ function homeView(){
 function forumView(){return `<h1 class="page-title">💬 Foro EduGo</h1><p class="subtitle">Publica, comenta y comparte ideas con estudiantes y directivos.</p>
 <div class="card"><h3>Crear publicación</h3><textarea id="postText" class="textarea" maxlength="${MAX.post}" placeholder="¿Qué quieres compartir con la comunidad?"></textarea>
 <div class="row" style="margin-top:10px"><select id="postPrivacy" class="select" style="max-width:180px"><option value="public">🌐 Pública</option><option value="private">🔒 Privada</option></select><button class="btn" onclick="addPost()">Publicar</button></div></div><div id="posts"></div>`}
-function addPost(){
-  const input=document.getElementById("postText");const text=cleanText(input?.value,"",MAX.post);
-  if(!text)return alert("Escribe algo antes de publicar.");
-  if(text.length>MAX.post)return alert("La publicación es demasiado larga.");
-  state.posts.unshift({id:uniqueId(state.posts),name:state.user.name,role:state.user.role,text,privacy:document.getElementById("postPrivacy").value==="private"?"private":"public",likes:0,comments:[]});
-  if(save())showPage("forum");
-}
-function renderPosts(){
-  const el=document.getElementById("posts");if(!el)return;
-  const key=String(state.user?.name||"guest").trim().toLowerCase();
-  const liked=new Set(Array.isArray(state.likedPosts?.[key])?state.likedPosts[key]:[]);
-  const visible=state.posts.filter(p=>p.privacy==="public"||p.name===state.user.name);
-  el.innerHTML=visible.length?visible.map(p=>`<article class="card post">
-  <div class="post-head"><div class="avatar">${esc(p.name[0]||"U")}</div><div><div class="post-name">${esc(p.name)} <span class="badge">${esc(p.role)}</span> <span class="badge ${p.privacy}">${p.privacy==="public"?"🌐 Pública":"🔒 Privada"}</span></div><div class="post-meta">Publicación de la comunidad</div></div></div>
-  <div class="post-body">${esc(p.text)}</div><div class="actions"><button class="action" ${liked.has(p.id)?"disabled aria-pressed=\"true\"":""} onclick="likePost(${p.id},this)">${liked.has(p.id)?"👍 Te gusta":"👍 Me gusta"} · ${Math.max(0,Number(p.likes)||0)}</button>
-  <button class="action" onclick="toggleComments(${p.id})">💬 ${p.comments.length}</button><button class="action" data-name="${esc(p.name)}" onclick="sendTo(this.dataset.name)">✉️ Mensaje</button></div>
-  <div id="comments-${p.id}" class="hidden"><div style="margin-top:10px">${p.comments.map(c=>`<div class="comment"><b>${esc(c.name)}</b><br>${esc(c.text)}</div>`).join("")}</div>
-  <div class="row" style="margin-top:10px"><input id="comment-${p.id}" maxlength="${MAX.comment}" class="input" placeholder="Escribe un comentario"><button class="btn" onclick="commentPost(${p.id})">Comentar</button></div></div></article>`).join(""):`<div class="empty">No hay publicaciones visibles.</div>`;
-}
-function likePost(id,button){
-  if(likeInProgress.has(id))return;
-  likeInProgress.add(id);
-  if(button){button.disabled=true;button.setAttribute("aria-busy","true");}
-  try{
-    const userKey=String(state.user?.name||"guest").trim().toLowerCase();if(!userKey)return;
-    if(!state.likedPosts||typeof state.likedPosts!=="object")state.likedPosts={};
-    if(!Array.isArray(state.likedPosts[userKey]))state.likedPosts[userKey]=[];
-    const p=state.posts.find(x=>Number(x?.id)===Number(id));
-    if(!p)return;
-    if(state.likedPosts[userKey].some(x=>Number(x)===Number(id))){
-      if(button){button.textContent="👍 Te gusta";button.removeAttribute("aria-busy");}
-      return;
-    }
-    p.likes=Math.max(0,Math.floor(Number.isFinite(Number(p.likes))?Number(p.likes):0))+1;
-    state.likedPosts[userKey].push(p.id);
-    save();renderPosts();
-  }finally{
-    likeInProgress.delete(id);
-  }
-}
-function toggleComments(id){const el=document.getElementById("comments-"+id);if(el)el.classList.toggle("hidden")}
-function commentPost(id){
-  const input=document.getElementById("comment-"+id),text=cleanText(input?.value,"",MAX.comment);
-  const p=state.posts.find(x=>Number(x?.id)===Number(id));
-  if(!p||!text)return;
-  p.comments.push({name:state.user.name,text});if(save()){renderPosts();setTimeout(()=>document.getElementById("comments-"+id)?.classList.remove("hidden"),0)}
-}
 function tasksView(){return `<h1 class="page-title">📝 Mis tareas</h1><p class="subtitle">Organiza tus actividades y marca lo que ya terminaste.</p>
 <div class="card"><h3>Agregar tarea</h3><div class="form-grid"><input id="taskTitle" maxlength="${MAX.taskTitle}" class="input" placeholder="Nombre de la tarea"><input id="taskSubject" maxlength="${MAX.subject}" class="input" placeholder="Materia"><input id="taskDate" class="input" type="date"><button class="btn" onclick="addTask()">Agregar tarea</button></div></div><div class="card"><div id="taskList"></div></div>`}
 function addTask(){const title=cleanText(document.getElementById("taskTitle")?.value,"",MAX.taskTitle),subject=cleanText(document.getElementById("taskSubject")?.value,"General",MAX.subject)||"General",date=document.getElementById("taskDate")?.value;if(!title||!safeDate(date))return alert("Completa nombre y fecha.");state.tasks.push({id:uniqueId(state.tasks),title,subject,date,done:false});save();showPage("tasks")}
