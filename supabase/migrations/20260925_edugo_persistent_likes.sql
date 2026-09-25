@@ -124,6 +124,7 @@ create table if not exists public.comments (
   created_at timestamptz not null default now()
 );
 create index if not exists comments_post_id_created_at_idx on public.comments(post_id, created_at);
+create index if not exists comments_author_id_idx on public.comments(author_id);
 
 alter table public.comments enable row level security;
 revoke all on table public.comments from anon, authenticated;
