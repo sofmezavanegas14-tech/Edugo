@@ -28,12 +28,14 @@ jobs:
         run: |
           mkdir -p www
 
-          if [ -f "EduGo_actualizado-3.html" ]; then
+          # index.html is the canonical GitHub Pages application.
+          # Legacy copies remain fallback sources for compatibility.
+          if [ -f "index.html" ]; then
+            cp "index.html" "www/index.html"
+          elif [ -f "EduGo_actualizado-3.html" ]; then
             cp "EduGo_actualizado-3.html" "www/index.html"
           elif [ -f "EduGo_actualizado.html" ]; then
             cp "EduGo_actualizado.html" "www/index.html"
-          elif [ -f "index.html" ]; then
-            cp "index.html" "www/index.html"
           else
             echo "ERROR: No se encontró el HTML de EduGo."
             exit 1
