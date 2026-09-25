@@ -28,7 +28,7 @@ localStorage puede contener likedPosts antiguos por compatibilidad, pero el fron
 
 ## Seguridad\nEl frontend escapa datos de usuario antes de mostrarlos y limita longitudes de entradas. No se deben colocar API keys, tokens o contraseñas reales en HTML, JavaScript, localStorage ni en este repositorio público.\n\nlocalStorage puede ser modificado por el usuario y no debe utilizarse como almacenamiento de secretos.\n\n## IA\nLa documentación anterior del proyecto hacía referencia a server/server.js y OpenAI, pero esos archivos no forman parte del árbol actual de mai. Por tanto, la aplicación principal no tiene actualmente una integración real con OpenAI verificable en este repositorio.\n\nindex2.html contiene una referencia a /api/edugo-ai, pero GitHub Pages por sí solo no proporciona esa ruta backend. Para una IA real se necesita un servidor o función backend que mantenga la API key fuera del navegador.\n\n## GitHub Pages\nEl repositorio conserva CNAME con edugo.live. Las rutas de la aplicación principal son compatibles con un sitio estático porque no dependen de localhost ni de server/server.js.\n\n## APK\nbuild-apk.yml genera el APK bajo demanda con Capacitor. El flujo debe tomar index.html como fuente principal y usar los archivos heredados solamente como respaldo.\n\nEl APK generado es un artefacto de compilación; no convierte localStorage en una base de datos compartida.\n\n## Desarrollo local\nComo es una aplicación estática, puede abrirse mediante cualquier servidor HTTP estático. No se necesita Node.js para ejecutar la versión principal de index.html.\n\n## Supabase
 
-Proyecto: xdszveoxdrdnwwzzvkav
+Proyecto: ajrgcnclpziovihjsjym
 Tablas nuevas/reutilizadas para EduGo:
 - public.profiles — perfil vinculado 1:1 con auth.users.
 - public.posts — publicaciones con UUID; author_id es nullable únicamente para permitir migración no destructiva de publicaciones locales antiguas.
@@ -47,12 +47,12 @@ No se borran los datos locales. Al iniciar sesión con una cuenta Supabase, EduG
 ## Verificación realizada
 
 - Esquema inspeccionado antes de crear tablas: no existían tablas públicas específicas para posts, likes o comentarios de EduGo.
-- Se verificó UNIQUE(user_id, post_id).
-- Se verificaron las políticas RLS de profiles, posts, post_likes y comments.
-- Se probó el toggle en una transacción: primera llamada => liked=true, 1 like; segunda => liked=false, 0 likes.
-- Se probaron dos llamadas concurrentes al mismo usuario/publicación: una terminó en liked=true/1 y la otra en liked=false/0, dejando 0 filas al final, demostrando serialización del toggle.
-- Las filas de prueba fueron eliminadas y se comprobó que no quedó ninguna publicación de prueba.
-- No se verificó todavía el flujo visual completo en un navegador real de edugo.live desde esta sesión.
+- Se verificó la estructura del proyecto correcto antes de modificarla: public.profiles, public.posts, public.post_likes y public.comments ya existían y estaban vacías.
+- public.posts fue alineada a UUID para que cada publicación tenga un identificador permanente.
+- post_likes tiene unicidad por (user_id, post_id) y RLS exige que user_id sea auth.uid().
+- toggle_post_like es SECURITY INVOKER y usa bloqueo transaccional por pareja usuario/publicación.
+- No se crearon usuarios, publicaciones, comentarios ni likes de prueba permanentes.
+- El flujo visual completo en edugo.live todavía debe validarse en navegador real con una cuenta de Supabase.
 
 ## Próxima evolución recomendada
 1. Completar la migración de cuentas locales que necesiten autenticación real, mediante registro/inicio de sesión voluntario.
