@@ -1,7 +1,7 @@
 /* EduGo Supabase integration: Auth + persistent posts/likes/comments. */
 (() => {
-  const SUPABASE_URL = "https://xdszveoxdrdnwwzzvkav.supabase.co";
-  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_xwUE0aN1g0rb7aOLyXPAsA_kOAX9bOA";
+  const SUPABASE_URL = "https://ajrgcnclpziovihjsjym.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_M3B27WhOsIADiOXGJqsk-w_VRO8Vnay";
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -39,12 +39,10 @@
   }
 
   async function ensureProfile(displayName) {
-    const baseUsername = (currentUser.email || "usuario").split("@")[0].replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 48) || "usuario";
-    const username = baseUsername + "-" + currentUser.id.replace(/-/g, "").slice(0, 8);
     const { error } = await db.from("profiles").upsert({
       id: currentUser.id,
-      username,
-      display_name: displayName
+      nombre: displayName,
+      email: currentUser.email || null
     }, { onConflict: "id" });
     if (error) console.warn("EduGo profile:", error.message);
   }
@@ -138,7 +136,7 @@
     const [{ data: likes, error: le }, { data: comments, error: ce }, { data: profiles, error: pre }] = await Promise.all([
       db.from("post_likes").select("post_id,user_id").in("post_id", ids),
       db.from("comments").select("id,post_id,author_id,content,created_at").in("post_id", ids).order("created_at", { ascending: true }),
-      authorIds.length ? db.from("profiles").select("id,display_name,username").in("id", authorIds) : Promise.resolve({ data: [], error: null })
+      authorIds.length ? db.from("profiles").select("id,nombre,email").in("id", authorIds) : Promise.resolve({ data: [], error: null })
     ]);
     if (le) throw le;
     if (ce) throw ce;
@@ -162,12 +160,12 @@
 
     return (posts || []).map(p => ({
       ...p,
-      authorName: profileMap.get(p.author_id)?.display_name || profileMap.get(p.author_id)?.username || "Usuario",
+      authorName: profileMap.get(p.author_id)?.nombre || profileMap.get(p.author_id)?.email || "Usuario",
       likeCount: counts.get(p.id) || 0,
       likedByMe: mine.has(p.id),
       comments: (grouped.get(p.id) || []).map(c => ({
         ...c,
-        authorName: profileMap.get(c.author_id)?.display_name || profileMap.get(c.author_id)?.username || "Usuario"
+        authorName: profileMap.get(c.author_id)?.nombre || profileMap.get(c.author_id)?.email || "Usuario"
       }))
     }));
   }
