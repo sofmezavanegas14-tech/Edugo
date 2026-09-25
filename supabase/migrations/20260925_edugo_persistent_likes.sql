@@ -18,10 +18,13 @@ grant select, insert, update on table public.profiles to authenticated;
 
 drop policy if exists "profiles_select_own" on public.profiles;
 drop policy if exists "profiles_select_authenticated" on public.profiles;
+drop policy if exists "profiles_select_authenticated" on public.profiles;
 create policy "profiles_select_authenticated" on public.profiles
   for select to authenticated using (true);
+drop policy if exists "profiles_insert_own" on public.profiles;
 create policy "profiles_insert_own" on public.profiles
   for insert to authenticated with check ((select auth.uid()) = id);
+drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles
   for update to authenticated
   using ((select auth.uid()) = id)
@@ -49,7 +52,9 @@ begin
   on conflict (id) do nothing;
   return new;
 end;
-$$;
+$;
+
+revoke execute on function private.handle_new_edugo_user() from public, anon, authenticated;
 
 drop trigger if exists on_auth_user_created_edugo on auth.users;
 create trigger on_auth_user_created_edugo
@@ -74,12 +79,16 @@ revoke all on table public.posts from anon, authenticated;
 grant select on table public.posts to anon, authenticated;
 grant insert, update, delete on table public.posts to authenticated;
 
+drop policy if exists "posts_public_read" on public.posts;
 create policy "posts_public_read" on public.posts for select to anon, authenticated
 using (privacy = 'public' or ((select auth.uid()) = author_id));
+drop policy if exists "posts_insert_own" on public.posts;
 create policy "posts_insert_own" on public.posts for insert to authenticated
 with check ((select auth.uid()) = author_id);
+drop policy if exists "posts_update_own" on public.posts;
 create policy "posts_update_own" on public.posts for update to authenticated
 using ((select auth.uid()) = author_id) with check ((select auth.uid()) = author_id);
+drop policy if exists "posts_delete_own" on public.posts;
 create policy "posts_delete_own" on public.posts for delete to authenticated
 using ((select auth.uid()) = author_id);
 
@@ -97,10 +106,13 @@ alter table public.post_likes enable row level security;
 revoke all on table public.post_likes from anon, authenticated;
 grant select, insert, delete on table public.post_likes to authenticated;
 
+drop policy if exists "post_likes_read_authenticated" on public.post_likes;
 create policy "post_likes_read_authenticated" on public.post_likes
 for select to authenticated using (true);
+drop policy if exists "post_likes_insert_own" on public.post_likes;
 create policy "post_likes_insert_own" on public.post_likes
 for insert to authenticated with check ((select auth.uid()) = user_id);
+drop policy if exists "post_likes_delete_own" on public.post_likes;
 create policy "post_likes_delete_own" on public.post_likes
 for delete to authenticated using ((select auth.uid()) = user_id);
 
@@ -116,11 +128,15 @@ create index if not exists comments_post_id_created_at_idx on public.comments(po
 alter table public.comments enable row level security;
 revoke all on table public.comments from anon, authenticated;
 grant select, insert, update, delete on table public.comments to authenticated;
+drop policy if exists "comments_read_authenticated" on public.comments;
 create policy "comments_read_authenticated" on public.comments for select to authenticated using (true);
+drop policy if exists "comments_insert_own" on public.comments;
 create policy "comments_insert_own" on public.comments for insert to authenticated
 with check ((select auth.uid()) = author_id);
+drop policy if exists "comments_update_own" on public.comments;
 create policy "comments_update_own" on public.comments for update to authenticated
 using ((select auth.uid()) = author_id) with check ((select auth.uid()) = author_id);
+drop policy if exists "comments_delete_own" on public.comments;
 create policy "comments_delete_own" on public.comments for delete to authenticated
 using ((select auth.uid()) = author_id);
 
