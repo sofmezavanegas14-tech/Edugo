@@ -65,26 +65,37 @@ button{background:#2563eb;color:#fff;border:0;font-weight:700}.secondary{backgro
 </div></div>
 
 <div id="admin" class="card hide"><h2>🛡️ Administración</h2>
-<p class="small">Cuentas creadas y último acceso en este dispositivo.</p><div id="users"></div>
+<p class="small">Cuentas locales de este dispositivo. Este prototipo no proporciona autenticación segura de servidor.</p><div id="users"></div>
 </div>
 </section>
 </main>
 
 <script>
 const USERS="edugo_users_v2", CURRENT="edugo_current_v2";
-function getUsers(){return JSON.parse(localStorage.getItem(USERS)||"[]")}
-function saveUsers(x){localStorage.setItem(USERS,JSON.stringify(x))}
-function register(){
- const n=document.getElementById("name").value.trim(),e=document.getElementById("email").value.trim().toLowerCase(),p=document.getElementById("pass").value,r=document.getElementById("role").value;
+function getUsers(){try{const x=JSON.parse(localStorage.getItem(USERS)||"[]");return Array.isArray(x)?x:[]}catch{return[]}}
+function saveUsers(x){try{localStorage.setItem(USERS,JSON.stringify(x));return true}catch{return false}}
+async function hashPassword(password){
+ const data=new TextEncoder().encode(password);
+ const hash=await crypto.subtle.digest("SHA-256",data);
+ return Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function register(){
+ const n=document.getElementById("name").value.trim().slice(0,120),e=document.getElementById("email").value.trim().toLowerCase().slice(0,160),p=document.getElementById("pass").value,r=document.getElementById("role").value;
  if(!n||!e||!p)return authMsg.textContent="Completa nombre, correo y contraseña.";
+ if(p.length<8)return authMsg.textContent="La contraseña debe tener al menos 8 caracteres.";
  let a=getUsers(); if(a.some(u=>u.email===e))return authMsg.textContent="Ese correo ya está registrado.";
- a.push({name:n,email:e,password:p,role:r,lastLogin:null,createdAt:new Date().toISOString()});saveUsers(a);
+ a.push({name:n,email:e,passwordHash:await hashPassword(p),role:r,lastLogin:null,createdAt:new Date().toISOString()});saveUsers(a);
  authMsg.textContent="Cuenta creada. Ahora pulsa «Iniciar sesión».";
 }
-function login(){
+async function login(){
  const e=document.getElementById("email").value.trim().toLowerCase(),p=document.getElementById("pass").value;
- let a=getUsers(),i=a.findIndex(u=>u.email===e&&u.password===p);
+ let a=getUsers(),i=a.findIndex(u=>u.email===e);
  if(i<0)return authMsg.textContent="Correo o contraseña incorrectos. Primero crea la cuenta en este dispositivo.";
+ const hash=await hashPassword(p);
+ const valid=a[i].passwordHash? a[i].passwordHash===hash : a[i].password===p;
+ if(!valid)return authMsg.textContent="Correo o contraseña incorrectos.";
+ // Compatibilidad: si una cuenta antigua tenía password en texto plano, se migra al hash al iniciar sesión.
+ if(a[i].password){delete a[i].password;a[i].passwordHash=hash;}
  a[i].lastLogin=new Date().toISOString();saveUsers(a);localStorage.setItem(CURRENT,e);show(a[i]);
 }
 function show(u){
