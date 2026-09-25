@@ -174,8 +174,6 @@ function normalizeState(raw){
   // Never persist legacy server-data replicas from older EduGo versions.
   delete next.posts;
   delete next.likedPosts;
-  if(raw.stateVersion===undefined){
-  }
   next.user=raw.user&&typeof raw.user==="object"?{
     name:cleanText(raw.user.name,"Estudiante",MAX.name)||"Estudiante",
     role:cleanText(raw.user.role,"Estudiante",40)||"Estudiante"
