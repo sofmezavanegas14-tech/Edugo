@@ -91,16 +91,18 @@ hr{border:0;border-top:1px solid var(--border);margin:18px 0}
     <div class="brand"><div class="logo">E</div>EduGo</div>
     <h1>Organiza, aprende y avanza.</h1>
     <p class="subtitle">Comunidad escolar + agenda académica en un solo lugar.</p>
-    <div class="notice">Prototipo escolar: los datos se guardan en este navegador.</div>
-    <label class="small">Nombre</label>
-    <input id="loginName" class="input" maxlength="80" autocomplete="name" placeholder="Ej. Sofía" value="Sofía">
-    <label class="small">Tipo de cuenta</label>
-    <select id="loginRole" class="select">
-      <option value="Estudiante">Estudiante</option>
-      <option value="Directivo">Directivo</option>
-    </select>
-    <button class="btn" style="width:100%;margin-top:14px" aria-label="Entrar a EduGo" onclick="login()">Entrar a EduGo</button>
-    <p class="small" style="margin-top:14px">En una versión real, el inicio de sesión usaría cuentas seguras y una base de datos.</p>
+    <div class="notice">Cuenta segura con Supabase Auth. Tus likes ya no dependen de localStorage.</div>
+    <label class="small">Nombre (solo al crear la cuenta)</label>
+    <input id="loginName" class="input" maxlength="80" autocomplete="name" placeholder="Ej. Sofía">
+    <label class="small">Correo electrónico</label>
+    <input id="loginEmail" class="input" type="email" maxlength="160" autocomplete="email" placeholder="tu@correo.com">
+    <label class="small">Contraseña</label>
+    <input id="loginPassword" class="input" type="password" minlength="8" autocomplete="current-password" placeholder="Mínimo 8 caracteres">
+    <div class="row" style="margin-top:14px">
+      <button class="btn" style="flex:1" aria-label="Entrar a EduGo" onclick="login()">Iniciar sesión</button>
+      <button class="btn secondary" style="flex:1" onclick="register()">Crear cuenta</button>
+    </div>
+    <p id="authMsg" class="small" style="margin-top:14px">Las cuentas nuevas usan Supabase Auth. Los datos locales antiguos se conservan y no se borran.</p>
   </div>
 </div>
 
@@ -374,5 +376,7 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
 boot();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/edugo-supabase.js"></script>
 </body>
 </html>
