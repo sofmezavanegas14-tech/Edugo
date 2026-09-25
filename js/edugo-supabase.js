@@ -125,7 +125,7 @@
   async function loadForumData() {
     const { data: posts, error: pe } = await db
       .from("posts")
-      .select("id,author_id,content,privacy,created_at,profiles:author_id(display_name,username)")
+      .select("id,author_id,content,privacy,created_at")
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -133,12 +133,17 @@
     const ids = (posts || []).map(p => p.id);
     if (!ids.length) return [];
 
-    const [{ data: likes, error: le }, { data: comments, error: ce }] = await Promise.all([
+    const authorIds = [...new Set((posts || []).map(p => p.author_id).filter(Boolean))];
+    const [{ data: likes, error: le }, { data: comments, error: ce }, { data: profiles, error: pre }] = await Promise.all([
       db.from("post_likes").select("post_id,user_id").in("post_id", ids),
-      db.from("comments").select("id,post_id,author_id,content,created_at,profiles:author_id(display_name,username)").in("post_id", ids).order("created_at", { ascending: true })
+      db.from("comments").select("id,post_id,author_id,content,created_at").in("post_id", ids).order("created_at", { ascending: true }),
+      authorIds.length ? db.from("profiles").select("id,display_name,username").in("id", authorIds) : Promise.resolve({ data: [], error: null })
     ]);
     if (le) throw le;
     if (ce) throw ce;
+    if (pre) throw pre;
+
+    const profileMap = new Map((profiles || []).map(p => [p.id, p]));
 
     const myId = currentUser.id;
     const counts = new Map();
@@ -156,7 +161,7 @@
 
     return (posts || []).map(p => ({
       ...p,
-      authorName: p.profiles?.display_name || p.profiles?.username || "Usuario",
+      authorName: profileMap.get(p.author_id)?.display_name || profileMap.get(p.author_id)?.username || "Usuario",
       likeCount: counts.get(p.id) || 0,
       likedByMe: mine.has(p.id),
       comments: grouped.get(p.id) || []
@@ -174,7 +179,8 @@
         const name = String(p.authorName || "Usuario");
         const safeName = esc(name);
         const commentHtml = (p.comments || []).map(c => {
-          const cn = c.profiles?.display_name || c.profiles?.username || "Usuario";
+          const cp = profileMap.get(c.author_id);
+          const cn = cp?.display_name || cp?.username || "Usuario";
           return '<div class="comment"><b>' + esc(cn) + '</b><br>' + esc(c.content) + '</div>';
         }).join("");
         const likeText = p.likedByMe ? "❤️ Te gusta" : "♡ Me gusta";
