@@ -43,10 +43,11 @@ begin
     split_part(coalesce(new.email,''),'@',1),
     'usuario'
   );
+  base_username := regexp_replace(base_username, '[^a-zA-Z0-9_.-]', '', 'g');
   insert into public.profiles(id, username, display_name)
   values (
     new.id,
-    left(base_username, 80),
+    left(coalesce(nullif(base_username,''),'usuario'), 48) || '-' || left(replace(new.id::text,'-',''),8),
     nullif(left(coalesce(new.raw_user_meta_data->>'display_name', new.raw_user_meta_data->>'name',''),120),'')
   )
   on conflict (id) do nothing;
