@@ -30,7 +30,6 @@
     state.user = { name: displayName, role: "Estudiante", authUserId: currentUser.id };
     save();
     await ensureProfile(displayName);
-    await migrateOwnLegacyPosts();
     document.getElementById("loginScreen")?.classList.add("hidden");
     document.getElementById("app")?.classList.remove("hidden");
     document.getElementById("userLabel").textContent = displayName + " · Cuenta segura";
@@ -86,39 +85,6 @@
     state.user = null;
     save();
     location.reload();
-  }
-
-  async function migrateOwnLegacyPosts() {
-    if (!currentUser || !Array.isArray(state.posts)) return;
-    const localName = String(state.user?.name || "").trim().toLowerCase();
-    const mine = state.posts.filter(p => String(p?.name || "").trim().toLowerCase() === localName && p?.text);
-    if (!mine.length) return;
-
-    for (const p of mine) {
-      const legacyId = "local:" + localName + ":" + String(p.id);
-      const payload = {
-        legacy_id: legacyId,
-        author_id: currentUser.id,
-        content: String(p.text).slice(0, 3000),
-        privacy: p.privacy === "private" ? "private" : "public"
-      };
-      const { data: post, error } = await db.from("posts").upsert(payload, { onConflict: "legacy_id" }).select("id").single();
-      if (error || !post) {
-        console.warn("EduGo legacy post migration:", error?.message || "unknown error");
-        continue;
-      }
-
-      const comments = Array.isArray(p.comments) ? p.comments : [];
-      for (const c of comments) {
-        if (String(c?.name || "").trim().toLowerCase() !== localName || !c?.text) continue;
-        const { error: ce } = await db.from("comments").insert({
-          post_id: post.id,
-          author_id: currentUser.id,
-          content: String(c.text).slice(0, 1000)
-        });
-        if (ce && !/duplicate/i.test(ce.message || "")) console.warn("EduGo legacy comment:", ce.message);
-      }
-    }
   }
 
   async function loadForumData() {
@@ -283,8 +249,7 @@
   window.register = register;
   window.logout = logout;
 
-  // The local state is retained for tasks/events/messages and for rollback/migration,
-  // but it is not consulted for authentication or likes.
+  // localStorage is not a data source for authentication, posts, comments, or likes.
   db.auth.onAuthStateChange((event, session) => {
     if (event === "SIGNED_OUT") {
       currentUser = null;
@@ -296,7 +261,12 @@
   });
 
   (async () => {
-    const { data: { user } } = await db.auth.getUser();
-    await applySession(user);
+    const { data: { session }, error } = await db.auth.getSession();
+    if (error) {
+      console.error("EduGo session:", error);
+      await applySession(null);
+      return;
+    }
+    await applySession(session?.user || null);
   })();
 })();
