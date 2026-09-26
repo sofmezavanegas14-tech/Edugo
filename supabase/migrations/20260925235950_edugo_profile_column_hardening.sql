@@ -1,41 +1,31 @@
--- EduGo incremental profile/auth hardening.
+-- EduGo profile column hardening.
 -- Applied in Supabase as migration 20260925235950_edugo_profile_column_hardening.
--- Non-destructive: restores the single required auth profile trigger if an
--- earlier migration removed it, and limits client profile reads to public fields.
+-- Non-destructive: no rows are deleted or modified.
 
-create schema if not exists private;
+revoke select (email) on table public.profiles from authenticated;
+revoke insert (email) on table public.profiles from authenticated;
+revoke update (email) on table public.profiles from authenticated;
 
-create or replace function private.handle_new_edugo_user()
+create or replace function private.handle_new_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public, pg_catalog
+set search_path = ''
 as $$
-declare
-  base_name text;
 begin
-  base_name := coalesce(
-    nullif(left(new.raw_user_meta_data->>'display_name', 120), ''),
-    nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
-    'Usuario'
-  );
-
-  insert into public.profiles(id, nombre)
-  values (new.id, base_name)
-  on conflict (id) do update
-    set nombre = coalesce(nullif(excluded.nombre, ''), public.profiles.nombre),
-        updated_at = now();
-
+  insert into public.profiles (id, nombre, email, avatar_url, rol)
+  values (
+    new.id,
+    coalesce(nullif(new.raw_user_meta_data->>'nombre',''), 'Usuario'),
+    new.email,
+    nullif(new.raw_user_meta_data->>'avatar_url',''),
+    'estudiante'
+  )
+  on conflict (id) do update set
+    email = excluded.email,
+    updated_at = now();
   return new;
 end;
 $$;
 
-revoke execute on function private.handle_new_edugo_user() from public, anon, authenticated;
-
-drop trigger if exists on_auth_user_created_edugo on auth.users;
-create trigger on_auth_user_created_edugo
-after insert on auth.users
-for each row execute function private.handle_new_edugo_user();
-
--- The browser only needs public profile fields for the forum.
-revoke select (email) on table public.profiles from authenticated;
+revoke execute on function private.handle_new_user() from public, anon, authenticated;
