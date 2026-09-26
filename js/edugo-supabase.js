@@ -45,33 +45,22 @@
     if (error) console.warn("EduGo profile:", error.message);
   }
 
-  async function register() {
+  async function login() {
     const name = document.getElementById("loginName")?.value.trim().slice(0, 80);
     const email = document.getElementById("loginEmail")?.value.trim().toLowerCase();
-    const password = document.getElementById("loginPassword")?.value || "";
-    if (!name || !email || !password) return msg("Completa nombre, correo y contraseña.");
-    if (password.length < 8) return msg("La contraseña debe tener al menos 8 caracteres.");
+    if (!name || !email) return msg("Completa tu nombre y correo.");
 
-    const { data, error } = await db.auth.signUp({
-      email, password,
-      options: { data: { display_name: name } }
+    const { error } = await db.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+        data: { display_name: name },
+        emailRedirectTo: window.location.origin + window.location.pathname
+      }
     });
-    if (error) return msg(error.message || "No se pudo crear la cuenta.");
-    if (!data.session) {
-      msg("Cuenta creada. Revisa tu correo para confirmar la cuenta y luego inicia sesión.");
-      return;
-    }
-    await applySession(data.user);
-  }
 
-  async function login() {
-    const email = document.getElementById("loginEmail")?.value.trim().toLowerCase();
-    const password = document.getElementById("loginPassword")?.value || "";
-    if (!email || !password) return msg("Introduce correo y contraseña.");
-
-    const { data, error } = await db.auth.signInWithPassword({ email, password });
-    if (error) return msg("Correo o contraseña incorrectos.");
-    await applySession(data.user);
+    if (error) return msg(error.message || "No se pudo enviar el acceso.");
+    msg("Listo. Revisa tu correo y toca el enlace de acceso para entrar a EduGo. No necesitas contraseña.");
   }
 
   async function logout() {
@@ -245,7 +234,6 @@
   };
 
   window.login = login;
-  window.register = register;
   window.logout = logout;
 
   // localStorage is not a data source for authentication, posts, comments, or likes.
