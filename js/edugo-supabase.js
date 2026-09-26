@@ -50,17 +50,18 @@
     const email = document.getElementById("loginEmail")?.value.trim().toLowerCase();
     if (!name || !email) return msg("Completa tu nombre y correo.");
 
-    const { error } = await db.auth.signInWithOtp({
-      email,
+    const { data, error } = await db.auth.signInAnonymously({
       options: {
-        shouldCreateUser: true,
-        data: { display_name: name },
-        emailRedirectTo: window.location.origin + window.location.pathname
+        data: {
+          display_name: name,
+          email
+        }
       }
     });
 
-    if (error) return msg(error.message || "No se pudo enviar el acceso.");
-    msg("Listo. Revisa tu correo y toca el enlace de acceso para entrar a EduGo. No necesitas contraseña.");
+    if (error) return msg(error.message || "No se pudo iniciar sesión.");
+    currentUser = data.user;
+    await applySession(currentUser);
   }
 
   async function logout() {
