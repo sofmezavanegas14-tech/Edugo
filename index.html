@@ -267,7 +267,6 @@ function openModal(html){document.getElementById("modalBody").textContent="";doc
 function closeModal(e){if(!e||e.target.id==="modal")document.getElementById("modal").classList.add("hidden")}
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
-boot();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/edugo-supabase.js"></script>
