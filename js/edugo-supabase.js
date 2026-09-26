@@ -24,25 +24,22 @@
     }
 
     const displayName =
-      (currentUser.user_metadata?.display_name || currentUser.user_metadata?.name || currentUser.email?.split("@")[0] || "Estudiante")
+      (currentUser.user_metadata?.display_name || currentUser.user_metadata?.name || "Estudiante")
         .trim().slice(0, 80) || "Estudiante";
 
-    state.user = { name: displayName, role: "Estudiante", authUserId: currentUser.id };
+    const { data: profile } = await db.from("profiles")
+      .select("id,nombre,avatar_url")
+      .eq("id", currentUser.id)
+      .maybeSingle();
+
+    const profileName = (profile?.nombre || displayName).trim().slice(0, 80) || "Estudiante";
+    state.user = { name: profileName, role: "Estudiante", authUserId: currentUser.id };
     save();
-    await ensureProfile(displayName);
     document.getElementById("loginScreen")?.classList.add("hidden");
     document.getElementById("app")?.classList.remove("hidden");
-    document.getElementById("userLabel").textContent = displayName + " · Cuenta segura";
+    document.getElementById("userLabel").textContent = profileName + " · Cuenta anónima";
     document.getElementById("userAvatar").textContent = displayName[0]?.toUpperCase() || "E";
     showPage(state.page || "home");
-  }
-
-  async function ensureProfile(displayName) {
-    const { error } = await db.from("profiles").upsert({
-      id: currentUser.id,
-      nombre: displayName
-    }, { onConflict: "id" });
-    if (error) console.warn("EduGo profile:", error.message);
   }
 
   async function login() {
@@ -79,7 +76,7 @@
   async function loadForumData() {
     const { data: posts, error: pe } = await db
       .from("posts")
-      .select("id,author_id,content,privacy,created_at")
+      .select("id,user_id,content,privacy,created_at")
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -87,10 +84,10 @@
     const ids = (posts || []).map(p => p.id);
     if (!ids.length) return [];
 
-    const authorIds = [...new Set((posts || []).map(p => p.author_id).filter(Boolean))];
+    const authorIds = [...new Set((posts || []).map(p => p.user_id).filter(Boolean))];
     const [{ data: likes, error: le }, { data: comments, error: ce }, { data: profiles, error: pre }] = await Promise.all([
       db.from("post_likes").select("post_id,user_id").in("post_id", ids),
-      db.from("comments").select("id,post_id,author_id,content,created_at").in("post_id", ids).order("created_at", { ascending: true }),
+      db.from("comments").select("id,post_id,user_id,content,created_at").in("post_id", ids).order("created_at", { ascending: true }),
       authorIds.length ? db.from("profiles").select("id,nombre,avatar_url").in("id", authorIds) : Promise.resolve({ data: [], error: null })
     ]);
     if (le) throw le;
@@ -115,12 +112,12 @@
 
     return (posts || []).map(p => ({
       ...p,
-      authorName: profileMap.get(p.author_id)?.nombre || "Usuario",
+      authorName: profileMap.get(p.user_id)?.nombre || "Usuario",
       likeCount: counts.get(p.id) || 0,
       likedByMe: mine.has(p.id),
       comments: (grouped.get(p.id) || []).map(c => ({
         ...c,
-        authorName: profileMap.get(c.author_id)?.nombre || "Usuario"
+        authorName: profileMap.get(c.user_id)?.nombre || "Usuario"
       }))
     }));
   }
@@ -137,7 +134,9 @@
         const safeName = esc(name);
         const commentHtml = (p.comments || []).map(c => {
           const cn = c.authorName || "Usuario";
-          return '<div class="comment"><b>' + esc(cn) + '</b><br>' + esc(c.content) + '</div>';
+          return '<div class="comment"><b>' + esc(cn) + '</b><br>' + esc(c.content) +
+            (c.user_id === currentUser.id ? '<div class="row" style="margin-top:6px"><button class="action" onclick="editComment(\\'' + c.id + '\\')">✏️ Editar</button><button class="action" onclick="deleteComment(\\'' + c.id + '\\')">🗑️ Eliminar</button></div>' : '') +
+            '</div>';
         }).join("");
         const likeText = p.likedByMe ? "❤️ Te gusta" : "♡ Me gusta";
         return '<article class="card post" data-post-id="' + p.id + '">' +
@@ -149,7 +148,9 @@
           '<div class="actions"><button class="action like-button" aria-pressed="' + (p.likedByMe ? "true" : "false") +
           '" onclick="likePost(\'' + p.id + '\',this)">' + likeText + ' · ' + p.likeCount + '</button>' +
           '<button class="action" onclick="toggleComments(\'' + p.id + '\')">💬 ' + (p.comments || []).length + '</button>' +
-          '<button class="action" data-name="' + safeName + '" onclick="sendTo(this.dataset.name)">✉️ Mensaje</button></div>' +
+          '<button class="action" data-name="' + safeName + '" onclick="sendTo(this.dataset.name)">✉️ Mensaje</button>' +
+          (p.user_id === currentUser.id ? '<button class="action" onclick="editPost(\\'' + p.id + '\\')">✏️ Editar</button><button class="action" onclick="deletePost(\\'' + p.id + '\\')">🗑️ Eliminar</button>' : '') +
+          '</div>' +
           '<div id="comments-' + p.id + '" class="hidden"><div style="margin-top:10px">' + commentHtml + '</div>' +
           '<div class="row" style="margin-top:10px"><input id="comment-' + p.id + '" maxlength="' + MAX.comment +
           '" class="input" placeholder="Escribe un comentario"><button class="btn" onclick="commentPost(\'' + p.id + '\')">Comentar</button></div></div></article>';
@@ -171,7 +172,7 @@
     if (button) button.disabled = true;
     try {
       const { error } = await db.from("posts").insert({
-        author_id: currentUser.id,
+        user_id: currentUser.id,
         content: text,
         privacy
       });
@@ -221,11 +222,51 @@
     document.getElementById("comments-" + id)?.classList.toggle("hidden");
   };
 
+  window.editPost = async function(id) {
+    if (!currentUser) return;
+    const { data: post, error: readError } = await db.from("posts").select("id,content").eq("id", id).maybeSingle();
+    if (readError || !post) return alert("No se pudo cargar la publicación.");
+    const next = prompt("Edita tu publicación:", post.content);
+    if (next === null) return;
+    const content = cleanText(next, "", MAX.post);
+    if (!content) return alert("La publicación no puede quedar vacía.");
+    const { error } = await db.from("posts").update({ content }).eq("id", id);
+    if (error) return alert("No se pudo editar la publicación.");
+    await window.renderPosts();
+  };
+
+  window.deletePost = async function(id) {
+    if (!currentUser || !confirm("¿Eliminar tu publicación?")) return;
+    const { error } = await db.from("posts").delete().eq("id", id);
+    if (error) return alert("No se pudo eliminar la publicación.");
+    await window.renderPosts();
+  };
+
+  window.editComment = async function(id) {
+    if (!currentUser) return;
+    const { data: comment, error: readError } = await db.from("comments").select("id,content").eq("id", id).maybeSingle();
+    if (readError || !comment) return alert("No se pudo cargar el comentario.");
+    const next = prompt("Edita tu comentario:", comment.content);
+    if (next === null) return;
+    const content = cleanText(next, "", MAX.comment);
+    if (!content) return alert("El comentario no puede quedar vacío.");
+    const { error } = await db.from("comments").update({ content }).eq("id", id);
+    if (error) return alert("No se pudo editar el comentario.");
+    await window.renderPosts();
+  };
+
+  window.deleteComment = async function(id) {
+    if (!currentUser || !confirm("¿Eliminar tu comentario?")) return;
+    const { error } = await db.from("comments").delete().eq("id", id);
+    if (error) return alert("No se pudo eliminar el comentario.");
+    await window.renderPosts();
+  };
+
   window.commentPost = async function(id) {
     const input = document.getElementById("comment-" + id);
     const content = cleanText(input?.value, "", MAX.comment);
     if (!content || !currentUser) return;
-    const { error } = await db.from("comments").insert({ post_id: id, author_id: currentUser.id, content });
+    const { error } = await db.from("comments").insert({ post_id: id, user_id: currentUser.id, content });
     if (error) {
       console.error(error);
       return alert("No se pudo publicar el comentario.");
