@@ -2,6 +2,11 @@
 (() => {
   const SUPABASE_URL = "https://ajrgcnclpziovihjsjym.supabase.co";
   const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_M3B27WhOsIADiOXGJqsk-w_VRO8Vnay";
+  if (!window.supabase?.createClient) {
+    const el = document.getElementById("authMsg");
+    if (el) el.textContent = "El servicio de autenticación no terminó de cargar. Recarga la página.";
+    return;
+  }
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
