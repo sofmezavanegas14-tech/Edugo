@@ -9,7 +9,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Descargar proyecto
         uses: actions/checkout@v4
 
@@ -17,6 +16,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Configurar Java
         uses: actions/setup-java@v4
@@ -24,24 +24,15 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Crear carpeta de aplicación
+      - name: Preparar aplicación web
+        shell: bash
         run: |
-          mkdir -p www
-
-          # index.html is the canonical GitHub Pages application.
-          # Legacy copies remain fallback sources for compatibility.
-          if [ -f "index.html" ]; then
-            cp "index.html" "www/index.html"
-            mkdir -p "www/js"
-            cp -R "js/." "www/js/"
-          elif [ -f "EduGo_actualizado-3.html" ]; then
-            cp "EduGo_actualizado-3.html" "www/index.html"
-          elif [ -f "EduGo_actualizado.html" ]; then
-            cp "EduGo_actualizado.html" "www/index.html"
-          else
-            echo "ERROR: No se encontró el HTML de EduGo."
-            exit 1
-                    fi
+          set -euo pipefail
+          test -f index.html
+          test -f js/edugo-supabase.js
+          mkdir -p www/js
+          cp index.html www/index.html
+          cp -R js/. www/js/
 
       - name: Instalar Capacitor
         run: |
@@ -74,6 +65,8 @@ jobs:
 
       - name: Preparar EduGo.apk
         run: |
+          set -euo pipefail
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
           mkdir -p release
           cp android/app/build/outputs/apk/debug/app-debug.apk release/EduGo.apk
 
