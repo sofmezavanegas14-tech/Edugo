@@ -184,7 +184,7 @@
         const commentHtml = (p.comments || []).map(c => {
           const cn = c.authorName || "Usuario";
           return '<div class="comment"><b>' + esc(cn) + '</b><br>' + esc(c.content) +
-            (c.user_id === currentUser.id ? '<div class="row" style="margin-top:6px"><button class="action" onclick="editComment(\\'' + c.id + '\\')">✏️ Editar</button><button class="action" onclick="deleteComment(\\'' + c.id + '\\')">🗑️ Eliminar</button></div>' : '') +
+            (c.user_id === currentUser.id ? '<div class="row" style="margin-top:6px"><button class="action" data-comment-id="' + c.id + '" onclick="editComment(this.dataset.commentId)">✏️ Editar</button><button class="action" data-comment-id="' + c.id + '" onclick="deleteComment(this.dataset.commentId)">🗑️ Eliminar</button></div>' : '') +
             '</div>';
         }).join("");
         const likeText = p.likedByMe ? "❤️ Te gusta" : "♡ Me gusta";
@@ -198,7 +198,7 @@
           '" onclick="likePost(\'' + p.id + '\',this)">' + likeText + ' · ' + p.likeCount + '</button>' +
           '<button class="action" onclick="toggleComments(\'' + p.id + '\')">💬 ' + (p.comments || []).length + '</button>' +
           '<button class="action" data-name="' + safeName + '" onclick="sendTo(this.dataset.name)">✉️ Mensaje</button>' +
-          (p.user_id === currentUser.id ? '<button class="action" onclick="editPost(\\'' + p.id + '\\')">✏️ Editar</button><button class="action" onclick="deletePost(\\'' + p.id + '\\')">🗑️ Eliminar</button>' : '') +
+          (p.user_id === currentUser.id ? '<button class="action" data-post-id="' + p.id + '" onclick="editPost(this.dataset.postId)">✏️ Editar</button><button class="action" data-post-id="' + p.id + '" onclick="deletePost(this.dataset.postId)">🗑️ Eliminar</button>' : '') +
           '</div>' +
           '<div id="comments-' + p.id + '" class="hidden"><div style="margin-top:10px">' + commentHtml + '</div>' +
           '<div class="row" style="margin-top:10px"><input id="comment-' + p.id + '" maxlength="' + MAX.comment +
