@@ -97,6 +97,11 @@ hr{border:0;border-top:1px solid var(--border);margin:18px 0}
     <input id="loginName" class="input" maxlength="80" autocomplete="name" placeholder="Ej. Sofía">
     <label class="small">Correo electrónico</label>
     <input id="loginEmail" class="input" type="email" maxlength="160" autocomplete="email" placeholder="tu@correo.com">
+    <label class="small" style="display:block;margin-top:12px">Tipo de cuenta</label>
+    <select id="loginRole" class="select" aria-label="Tipo de cuenta">
+      <option value="Estudiante">Estudiante</option>
+      <option value="Profesor">Profesor</option>
+    </select>
     <div class="row" style="margin-top:14px">
       <button id="loginButton" class="btn" style="flex:1" aria-label="Entrar a EduGo" onclick="window.login()" disabled>Cargando…</button>
     </div>
