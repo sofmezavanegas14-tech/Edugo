@@ -268,7 +268,35 @@ function closeModal(e){if(!e||e.target.id==="modal")document.getElementById("mod
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/edugo-supabase.js"></script>
+<script>
+(function loadEduGoSupabase() {
+  const sources = [
+    "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
+    "https://unpkg.com/@supabase/supabase-js@2"
+  ];
+  let i = 0;
+  function loadNext() {
+    if (i >= sources.length) {
+      const msg = document.getElementById("authMsg");
+      if (msg) msg.textContent = "No se pudo cargar el servicio de autenticación. Recarga la página e inténtalo nuevamente.";
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = sources[i++];
+    s.onload = function () {
+      const app = document.createElement("script");
+      app.src = "js/edugo-supabase.js";
+      app.onerror = function () {
+        const msg = document.getElementById("authMsg");
+        if (msg) msg.textContent = "No se pudo cargar EduGo. Recarga la página e inténtalo nuevamente.";
+      };
+      document.body.appendChild(app);
+    };
+    s.onerror = loadNext;
+    document.body.appendChild(s);
+  }
+  loadNext();
+})();
+</script>
 </body>
 </html>
