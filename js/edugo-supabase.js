@@ -38,6 +38,7 @@
     const displayName =
       (currentUser.user_metadata?.display_name || currentUser.user_metadata?.name || "Estudiante")
         .trim().slice(0, 80) || "Estudiante";
+    const role = currentUser.user_metadata?.role === "Profesor" ? "Profesor" : "Estudiante";
 
     const { data: profile, error: profileError } = await db.from("profiles")
       .select("id,nombre,avatar_url")
@@ -46,7 +47,7 @@
 
     if (profileError) throw profileError;
     const profileName = (profile?.nombre || displayName).trim().slice(0, 80) || "Estudiante";
-    state.user = { name: profileName, role: "Estudiante", authUserId: currentUser.id };
+    state.user = { name: profileName, role, authUserId: currentUser.id };
     save();
     document.getElementById("loginScreen")?.classList.add("hidden");
     document.getElementById("app")?.classList.remove("hidden");
@@ -64,6 +65,7 @@
 
     const name = document.getElementById("loginName")?.value.trim().slice(0, 80);
     const email = document.getElementById("loginEmail")?.value.trim().toLowerCase();
+    const role = document.getElementById("loginRole")?.value === "Profesor" ? "Profesor" : "Estudiante";
 
     if (!name || !email) {
       msg("Completa tu nombre y correo.");
@@ -87,7 +89,8 @@
         options: {
           data: {
             display_name: name,
-            email
+            email,
+            role
           }
         }
       });
