@@ -152,8 +152,12 @@ const MAX={
 };
 
 function safeString(value,fallback=""){return typeof value==="string"?value:fallback}
-function cleanText(value,max){
-  return safeString(value).replace(/\s+/g," ").trim().slice(0,max);
+function cleanText(value, fallbackOrMax="", maybeMax){
+  const fallback = typeof fallbackOrMax === "number" ? "" : safeString(fallbackOrMax);
+  const max = typeof fallbackOrMax === "number" ? fallbackOrMax : maybeMax;
+  const normalized = safeString(value).replace(/\\s+/g," ").trim();
+  if (!normalized) return fallback;
+  return normalized.slice(0, Number.isFinite(max) ? max : normalized.length);
 }
 function safeId(value,fallback){const n=Number(value);return Number.isFinite(n)?n:fallback}
 function safeDate(value){return /^\d{4}-\d{2}-\d{2}$/.test(safeString(value))?value:""}
