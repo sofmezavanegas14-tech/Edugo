@@ -8,9 +8,16 @@
     return;
   }
   const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
   });
   window.edugoSupabase = db;
+
+  const loginButton = document.getElementById("loginButton");
+  if (loginButton) {
+    loginButton.disabled = false;
+    loginButton.textContent = "Continuar";
+    loginButton.setAttribute("aria-busy", "false");
+  }
 
   let currentUser = null;
   let likeBusy = new Set();
@@ -32,11 +39,12 @@
       (currentUser.user_metadata?.display_name || currentUser.user_metadata?.name || "Estudiante")
         .trim().slice(0, 80) || "Estudiante";
 
-    const { data: profile } = await db.from("profiles")
+    const { data: profile, error: profileError } = await db.from("profiles")
       .select("id,nombre,avatar_url")
       .eq("id", currentUser.id)
       .maybeSingle();
 
+    if (profileError) throw profileError;
     const profileName = (profile?.nombre || displayName).trim().slice(0, 80) || "Estudiante";
     state.user = { name: profileName, role: "Estudiante", authUserId: currentUser.id };
     save();
@@ -48,22 +56,58 @@
   }
 
   async function login() {
+    const button = document.getElementById("loginButton");
+    if (!window.edugoSupabase?.auth?.signInAnonymously) {
+      msg("Supabase todavía está cargando. Espera un momento e inténtalo de nuevo.");
+      return;
+    }
+
     const name = document.getElementById("loginName")?.value.trim().slice(0, 80);
     const email = document.getElementById("loginEmail")?.value.trim().toLowerCase();
-    if (!name || !email) return msg("Completa tu nombre y correo.");
 
-    const { data, error } = await db.auth.signInAnonymously({
-      options: {
-        data: {
-          display_name: name,
-          email
+    if (!name || !email) {
+      msg("Completa tu nombre y correo.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      msg("Escribe un correo electrónico válido. Solo se guardará como dato de perfil; no se verificará.");
+      return;
+    }
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Conectando…";
+      button.setAttribute("aria-busy", "true");
+    }
+    msg("Conectando con Supabase…");
+
+    try {
+      const { data, error } = await db.auth.signInAnonymously({
+        options: {
+          data: {
+            display_name: name,
+            email
+          }
         }
-      }
-    });
+      });
 
-    if (error) return msg(error.message || "No se pudo iniciar sesión.");
-    currentUser = data.user;
-    await applySession(currentUser);
+      if (error) throw error;
+      if (!data?.user || !data?.session) {
+        throw new Error("Supabase no devolvió un usuario y una sesión válidos.");
+      }
+
+      currentUser = data.user;
+      await applySession(currentUser);
+    } catch (error) {
+      console.error("EduGo login:", error);
+      msg(error?.message || "No se pudo iniciar sesión con Supabase.");
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Continuar";
+        button.setAttribute("aria-busy", "false");
+      }
+    }
   }
 
   async function logout() {
@@ -177,7 +221,6 @@
     if (button) button.disabled = true;
     try {
       const { error } = await db.from("posts").insert({
-        user_id: currentUser.id,
         content: text,
         privacy
       });
@@ -271,7 +314,7 @@
     const input = document.getElementById("comment-" + id);
     const content = cleanText(input?.value, "", MAX.comment);
     if (!content || !currentUser) return;
-    const { error } = await db.from("comments").insert({ post_id: id, user_id: currentUser.id, content });
+    const { error } = await db.from("comments").insert({ post_id: id, content });
     if (error) {
       console.error(error);
       return alert("No se pudo publicar el comentario.");
@@ -298,9 +341,16 @@
     const { data: { session }, error } = await db.auth.getSession();
     if (error) {
       console.error("EduGo session:", error);
+      msg(error.message || "No se pudo restaurar la sesión.");
       await applySession(null);
       return;
     }
-    await applySession(session?.user || null);
+    try {
+      await applySession(session?.user || null);
+    } catch (error) {
+      console.error("EduGo session/profile:", error);
+      msg(error?.message || "No se pudo cargar tu perfil.");
+      await db.auth.signOut();
+    }
   })();
 })();
