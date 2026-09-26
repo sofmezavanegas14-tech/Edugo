@@ -98,7 +98,7 @@ hr{border:0;border-top:1px solid var(--border);margin:18px 0}
     <label class="small">Correo electrónico</label>
     <input id="loginEmail" class="input" type="email" maxlength="160" autocomplete="email" placeholder="tu@correo.com">
     <div class="row" style="margin-top:14px">
-      <button class="btn" style="flex:1" aria-label="Entrar a EduGo" onclick="login()">Continuar con mi correo</button>
+      <button id="loginButton" class="btn" style="flex:1" aria-label="Entrar a EduGo" onclick="window.login()" disabled>Cargando…</button>
     </div>
     <p id="authMsg" class="small" style="margin-top:14px">Acceso inmediato con una cuenta anónima de Supabase. El correo solo se guarda como dato de perfil y no se verifica.</p>
   </div>
@@ -270,31 +270,72 @@ function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
 </script>
 <script>
 (function loadEduGoSupabase() {
+  const button = document.getElementById("loginButton");
+  const msg = document.getElementById("authMsg");
+  const setStatus = (text) => { if (msg) msg.textContent = text; };
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Cargando…";
+    button.setAttribute("aria-busy", "true");
+  }
+
   const sources = [
     "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
     "https://unpkg.com/@supabase/supabase-js@2"
   ];
   let i = 0;
+
+  function fail(message) {
+    setStatus(message);
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Servicio no disponible";
+      button.setAttribute("aria-busy", "false");
+    }
+  }
+
   function loadNext() {
     if (i >= sources.length) {
-      const msg = document.getElementById("authMsg");
-      if (msg) msg.textContent = "No se pudo cargar el servicio de autenticación. Recarga la página e inténtalo nuevamente.";
+      fail("No se pudo cargar Supabase. Revisa tu conexión y recarga la página.");
       return;
     }
+
     const s = document.createElement("script");
-    s.src = sources[i++];
+    s.src = sources[i++] + "?v=2";
+    s.async = false;
+
     s.onload = function () {
+      if (!window.supabase?.createClient) {
+        loadNext();
+        return;
+      }
+
       const app = document.createElement("script");
-      app.src = "js/edugo-supabase.js";
+      app.src = "js/edugo-supabase.js?v=20260926";
+      app.async = false;
+      app.onload = function () {
+        if (typeof window.login !== "function") {
+          fail("EduGo cargó, pero la función de inicio de sesión no está disponible.");
+        }
+      };
       app.onerror = function () {
-        const msg = document.getElementById("authMsg");
-        if (msg) msg.textContent = "No se pudo cargar EduGo. Recarga la página e inténtalo nuevamente.";
+        fail("No se pudo cargar EduGo. Recarga la página e inténtalo nuevamente.");
       };
       document.body.appendChild(app);
     };
+
     s.onerror = loadNext;
     document.body.appendChild(s);
   }
+
+  window.addEventListener("error", function (event) {
+    if (event?.error) console.error("EduGo JavaScript:", event.error);
+    if (event?.message && /edugo|supabase|login/i.test(event.message)) {
+      setStatus("Ocurrió un error de JavaScript. Revisa el mensaje y recarga la página.");
+    }
+  });
+
   loadNext();
 })();
 </script>
