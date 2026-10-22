@@ -57,7 +57,7 @@
     const roleAliases = {
       usuario: "usuario", user: "usuario", general: "usuario",
       estudiante: "estudiante", student: "estudiante",
-      profesor: "profesor", profesor: "profesor", teacher: "profesor",
+      profesor: "profesor", teacher: "profesor",
       coordinador: "coordinador", coordinator: "coordinador"
     };
     const rawRole = String(profile.rol || "").trim().toLocaleLowerCase("es");
@@ -100,7 +100,7 @@
     const email = document.getElementById("loginEmail")?.value.trim().toLowerCase() || "";
     const password = document.getElementById("loginPassword")?.value || "";
     if (requireName && !name) throw new Error("Escribe tu nombre para crear la cuenta.");
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("Escribe un correo electrónico válido.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Escribe un correo electrónico válido.");
     if (password.length < 8 || password.length > 128) throw new Error("La contraseña debe tener entre 8 y 128 caracteres.");
     return { name, email, password };
   }
