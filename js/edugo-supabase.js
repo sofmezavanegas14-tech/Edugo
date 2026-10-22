@@ -15,9 +15,11 @@
   const loginButton = document.getElementById("loginButton");
   if (loginButton) {
     loginButton.disabled = false;
-    loginButton.textContent = "Continuar";
+    loginButton.textContent = "Iniciar sesión";
     loginButton.setAttribute("aria-busy", "false");
   }
+  const registerButton = document.getElementById("registerButton");
+  if (registerButton) registerButton.disabled = false;
 
   let currentUser = null;
   let likeBusy = new Set();
@@ -57,8 +59,9 @@
     const roleAliases = {
       usuario: "usuario", user: "usuario", general: "usuario",
       estudiante: "estudiante", student: "estudiante",
-      profesor: "profesor", teacher: "profesor",
-      coordinador: "coordinador", coordinator: "coordinador"
+      profesor: "profesor", docente: "profesor", teacher: "profesor",
+      coordinador: "coordinador", coordinator: "coordinador",
+      directivo: "directivo"
     };
     const rawRole = String(profile.rol || "").trim().toLocaleLowerCase("es");
     const role = roleAliases[rawRole];
