@@ -92,20 +92,19 @@ hr{border:0;border-top:1px solid var(--border);margin:18px 0}
     <div class="brand"><div class="logo">E</div>EduGo</div>
     <h1>Organiza, aprende y avanza.</h1>
     <p class="subtitle">Comunidad escolar + agenda académica en un solo lugar.</p>
-    <div class="notice">Cuenta anónima con Supabase Auth. Las publicaciones, comentarios y likes se guardan en Supabase.</div>
-    <label class="small">Nombre</label>
+    <div class="notice">Inicia sesión con tu correo y contraseña, o crea una cuenta. Los permisos se validan desde tu perfil en EduGo.</div>
+    <label class="small">Nombre (solo para crear una cuenta)</label>
     <input id="loginName" class="input" maxlength="80" autocomplete="name" placeholder="Ej. Sofía">
     <label class="small">Correo electrónico</label>
     <input id="loginEmail" class="input" type="email" maxlength="160" autocomplete="email" placeholder="tu@correo.com">
-    <label class="small" style="display:block;margin-top:12px">Tipo de cuenta</label>
-    <select id="loginRole" class="select" aria-label="Tipo de cuenta">
-      <option value="Estudiante">Estudiante</option>
-      <option value="Profesor">Profesor</option>
-    </select>
+    <label class="small">Contraseña</label>
+    <input id="loginPassword" class="input" type="password" minlength="8" maxlength="128" autocomplete="current-password" placeholder="Tu contraseña">
     <div class="row" style="margin-top:14px">
-      <button id="loginButton" class="btn" style="flex:1" aria-label="Entrar a EduGo" onclick="window.login()" disabled>Cargando…</button>
+      <button id="loginButton" class="btn" style="flex:1" aria-label="Iniciar sesión en EduGo" onclick="window.login()" disabled>Cargando…</button>
+      <button id="registerButton" class="btn secondary" style="flex:1" aria-label="Crear cuenta de EduGo" onclick="window.register()" disabled>Crear cuenta</button>
     </div>
-    <p id="authMsg" class="small" style="margin-top:14px">Acceso inmediato con una cuenta anónima de Supabase. El correo solo se guarda como dato de perfil y no se verifica.</p>
+    <button id="retryProfileButton" class="btn secondary hidden" style="margin-top:10px;width:100%" onclick="window.retryProfile()">Reintentar cargar perfil</button>
+    <p id="authMsg" class="small" style="margin-top:14px">Tu rol se obtiene de tu perfil autorizado. Crear una cuenta no concede permisos de profesor ni coordinador.</p>
   </div>
 </div>
 
@@ -280,6 +279,7 @@ function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
 <script>
 (function loadEduGoSupabase() {
   const button = document.getElementById("loginButton");
+  const registerButton = document.getElementById("registerButton");
   const msg = document.getElementById("authMsg");
   const setStatus = (text) => { if (msg) msg.textContent = text; };
 
@@ -288,6 +288,7 @@ function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
     button.textContent = "Cargando…";
     button.setAttribute("aria-busy", "true");
   }
+  if (registerButton) registerButton.disabled = true;
 
   const sources = [
     "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
@@ -302,6 +303,7 @@ function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
       button.textContent = "Servicio no disponible";
       button.setAttribute("aria-busy", "false");
     }
+    if (registerButton) registerButton.disabled = true;
   }
 
   function loadNext() {
@@ -324,8 +326,8 @@ function jsq(s){return String(s??"").replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
       app.src = "js/edugo-supabase.js?v=20260926";
       app.async = false;
       app.onload = function () {
-        if (typeof window.login !== "function") {
-          fail("EduGo cargó, pero la función de inicio de sesión no está disponible.");
+        if (typeof window.login !== "function" || typeof window.register !== "function") {
+          fail("EduGo cargó, pero el sistema de acceso no está disponible.");
         }
       };
       app.onerror = function () {
