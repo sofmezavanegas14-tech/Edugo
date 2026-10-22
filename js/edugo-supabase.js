@@ -36,80 +36,139 @@
     }
 
     const displayName =
-      (currentUser.user_metadata?.display_name || currentUser.user_metadata?.name || "Estudiante")
-        .trim().slice(0, 80) || "Estudiante";
-    const role = currentUser.user_metadata?.role === "Profesor" ? "Profesor" : "Estudiante";
+      (currentUser.user_metadata?.display_name || currentUser.user_metadata?.name || "Usuario")
+        .trim().slice(0, 80) || "Usuario";
 
     const { data: profile, error: profileError } = await db.from("profiles")
-      .select("id,nombre,avatar_url")
+      .select("id,nombre,avatar_url,rol")
       .eq("id", currentUser.id)
       .maybeSingle();
 
     if (profileError) throw profileError;
-    const profileName = (profile?.nombre || displayName).trim().slice(0, 80) || "Estudiante";
+    if (!profile) {
+      document.getElementById("loginScreen")?.classList.remove("hidden");
+      document.getElementById("app")?.classList.add("hidden");
+      const retry = document.getElementById("retryProfileButton");
+      if (retry) retry.classList.remove("hidden");
+      msg("Tu identidad está autenticada, pero falta el perfil vinculado. Tu sesión se conserva; reintenta o solicita revisión de tu cuenta.");
+      return;
+    }
+
+    const roleAliases = {
+      usuario: "usuario", user: "usuario", general: "usuario",
+      estudiante: "estudiante", student: "estudiante",
+      profesor: "profesor", teacher: "profesor",
+      coordinador: "coordinador", coordinator: "coordinador"
+    };
+    const rawRole = String(profile.rol || "").trim().toLocaleLowerCase("es");
+    const role = roleAliases[rawRole];
+    if (!role) {
+      document.getElementById("loginScreen")?.classList.remove("hidden");
+      document.getElementById("app")?.classList.add("hidden");
+      const retry = document.getElementById("retryProfileButton");
+      if (retry) retry.classList.remove("hidden");
+      msg("Tu perfil no tiene un rol válido. Se conserva tu sesión, pero no se concede acceso hasta corregir el perfil.");
+      return;
+    }
+
+    const profileName = (profile.nombre || displayName).trim().slice(0, 80) || "Usuario";
     state.user = { name: profileName, role, authUserId: currentUser.id };
     save();
     document.getElementById("loginScreen")?.classList.add("hidden");
     document.getElementById("app")?.classList.remove("hidden");
-    document.getElementById("userLabel").textContent = profileName + " · Cuenta anónima";
-    document.getElementById("userAvatar").textContent = displayName[0]?.toUpperCase() || "E";
+    document.getElementById("userLabel").textContent = profileName + " · " + role;
+    document.getElementById("userAvatar").textContent = profileName[0]?.toUpperCase() || "E";
+    const retry = document.getElementById("retryProfileButton");
+    if (retry) retry.classList.add("hidden");
     showPage(state.page || "home");
   }
 
+  function setAuthBusy(busy, message) {
+    for (const id of ["loginButton", "registerButton"]) {
+      const button = document.getElementById(id);
+      if (button) button.disabled = busy;
+    }
+    const loginBtn = document.getElementById("loginButton");
+    if (loginBtn) {
+      loginBtn.textContent = busy ? message : "Iniciar sesión";
+      loginBtn.setAttribute("aria-busy", String(busy));
+    }
+  }
+
+  function authInputs(requireName) {
+    const name = document.getElementById("loginName")?.value.trim().slice(0, 80) || "";
+    const email = document.getElementById("loginEmail")?.value.trim().toLowerCase() || "";
+    const password = document.getElementById("loginPassword")?.value || "";
+    if (requireName && !name) throw new Error("Escribe tu nombre para crear la cuenta.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Escribe un correo electrónico válido.");
+    if (password.length < 8 || password.length > 128) throw new Error("La contraseña debe tener entre 8 y 128 caracteres.");
+    return { name, email, password };
+  }
+
   async function login() {
-    const button = document.getElementById("loginButton");
-    if (!window.edugoSupabase?.auth?.signInAnonymously) {
-      msg("Supabase todavía está cargando. Espera un momento e inténtalo de nuevo.");
-      return;
-    }
+    let credentials;
+    try { credentials = authInputs(false); }
+    catch (error) { msg(error.message); return; }
 
-    const name = document.getElementById("loginName")?.value.trim().slice(0, 80);
-    const email = document.getElementById("loginEmail")?.value.trim().toLowerCase();
-    const role = document.getElementById("loginRole")?.value === "Profesor" ? "Profesor" : "Estudiante";
-
-    if (!name || !email) {
-      msg("Completa tu nombre y correo.");
-      return;
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      msg("Escribe un correo electrónico válido. Solo se guardará como dato de perfil; no se verificará.");
-      return;
-    }
-
-    if (button) {
-      button.disabled = true;
-      button.textContent = "Conectando…";
-      button.setAttribute("aria-busy", "true");
-    }
-    msg("Conectando con Supabase…");
-
+    setAuthBusy(true, "Iniciando sesión…");
+    msg("Verificando tus credenciales…");
     try {
-      const { data, error } = await db.auth.signInAnonymously({
-        options: {
-          data: {
-            display_name: name,
-            email,
-            role
-          }
-        }
+      const { data, error } = await db.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password
       });
-
       if (error) throw error;
-      if (!data?.user || !data?.session) {
-        throw new Error("Supabase no devolvió un usuario y una sesión válidos.");
-      }
-
+      if (!data?.user || !data?.session) throw new Error("No se recibió una sesión válida.");
       currentUser = data.user;
       await applySession(currentUser);
     } catch (error) {
       console.error("EduGo login:", error);
-      msg(error?.message || "No se pudo iniciar sesión con Supabase.");
-      if (button) {
-        button.disabled = false;
-        button.textContent = "Continuar";
-        button.setAttribute("aria-busy", "false");
+      msg(error?.message || "No se pudo iniciar sesión. Comprueba el correo y la contraseña.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function register() {
+    let credentials;
+    try { credentials = authInputs(true); }
+    catch (error) { msg(error.message); return; }
+
+    setAuthBusy(true, "Creando cuenta…");
+    msg("Creando tu cuenta de forma segura…");
+    try {
+      const { data, error } = await db.auth.signUp({
+        email: credentials.email,
+        password: credentials.password,
+        options: { data: { display_name: credentials.name, nombre: credentials.name } }
+      });
+      if (error) throw error;
+      if (data?.session && data?.user) {
+        currentUser = data.user;
+        await applySession(currentUser);
+      } else {
+        msg("Cuenta creada. Revisa tu correo para confirmar la dirección y luego inicia sesión.");
       }
+    } catch (error) {
+      console.error("EduGo register:", error);
+      msg(error?.message || "No se pudo crear la cuenta. Inténtalo de nuevo.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function retryProfile() {
+    try {
+      const { data: { user }, error } = await db.auth.getUser();
+      if (error) throw error;
+      if (!user) {
+        msg("Tu sesión terminó. Inicia sesión nuevamente.");
+        return;
+      }
+      await applySession(user);
+    } catch (error) {
+      console.error("EduGo profile retry:", error);
+      msg("No se pudo recuperar el perfil. Inténtalo de nuevo más tarde.");
     }
   }
 
@@ -327,6 +386,8 @@
   };
 
   window.login = login;
+  window.register = register;
+  window.retryProfile = retryProfile;
   window.logout = logout;
 
   // localStorage is not a data source for authentication, posts, comments, or likes.
@@ -353,7 +414,7 @@
     } catch (error) {
       console.error("EduGo session/profile:", error);
       msg(error?.message || "No se pudo cargar tu perfil.");
-      await db.auth.signOut();
+      // Keep the authenticated session so a transient profile/RLS failure can be retried.
     }
   })();
 })();
